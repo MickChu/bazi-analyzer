@@ -532,3 +532,277 @@ class BaziAnalyzer:
             "金": "西方", "水": "北方",
         }
         return "、".join(_FANGWEI.get(wx, "") for wx in xiyong["xishen"])
+
+
+# ============================================================
+# 纳音五行（六十甲子纳音表）
+# ============================================================
+
+# 六十甲子纳音五行对照表（以干支对为 key）
+NAYIN = {
+    "甲子": "海中金", "乙丑": "海中金", "丙寅": "炉中火", "丁卯": "炉中火",
+    "戊辰": "大林木", "己巳": "大林木", "庚午": "路旁土", "辛未": "路旁土",
+    "壬申": "剑锋金", "癸酉": "剑锋金", "甲戌": "山头火", "乙亥": "山头火",
+    "丙子": "涧下水", "丁丑": "涧下水", "戊寅": "城头土", "己卯": "城头土",
+    "庚辰": "白蜡金", "辛巳": "白蜡金", "壬午": "杨柳木", "癸未": "杨柳木",
+    "甲申": "泉中水", "乙酉": "泉中水", "丙戌": "屋上土", "丁亥": "屋上土",
+    "戊子": "霹雳火", "己丑": "霹雳火", "庚寅": "松柏木", "辛卯": "松柏木",
+    "壬辰": "长流水", "癸巳": "长流水", "甲午": "沙中金", "乙未": "沙中金",
+    "丙申": "山下火", "丁酉": "山下火", "戊戌": "平地木", "己亥": "平地木",
+    "庚子": "壁上土", "辛丑": "壁上土", "壬寅": "金箔金", "癸卯": "金箔金",
+    "甲辰": "覆灯火", "乙巳": "覆灯火", "丙午": "天河水", "丁未": "天河水",
+    "戊申": "大驿土", "己酉": "大驿土", "庚戌": "钗钏金", "辛亥": "钗钏金",
+    "壬子": "桑柘木", "癸丑": "桑柘木", "甲寅": "大溪水", "乙卯": "大溪水",
+    "丙辰": "沙中土", "丁巳": "沙中土", "戊午": "天上火", "己未": "天上火",
+    "庚申": "石榴木", "辛酉": "石榴木", "壬戌": "大海水", "癸亥": "大海水",
+}
+
+# 纳音五行反查表（纳音名 → 五行）
+NAYIN_WUXING = {
+    "海中金": "金", "炉中火": "火", "大林木": "木", "路旁土": "土",
+    "剑锋金": "金", "山头火": "火", "涧下水": "水", "城头土": "土",
+    "白蜡金": "金", "杨柳木": "木", "泉中水": "水", "屋上土": "土",
+    "霹雳火": "火", "松柏木": "木", "长流水": "水", "沙中金": "金",
+    "山下火": "火", "平地木": "木", "壁上土": "土", "金箔金": "金",
+    "覆灯火": "火", "天河水": "水", "大驿土": "土", "钗钏金": "金",
+    "桑柘木": "木", "大溪水": "水", "沙中土": "土", "天上火": "火",
+    "石榴木": "木", "大海水": "水",
+}
+
+
+# ============================================================
+# 旬空（空亡）
+# ============================================================
+
+# 旬空表：六甲旬 → 空亡地支对
+# 甲子旬（甲子→癸酉）戌亥空
+# 甲戌旬（甲戌→癸未）申酉空
+# 甲申旬（甲申→癸巳）午未空
+# 甲午旬（甲午→癸卯）辰巳空
+# 甲辰旬（甲辰→癸丑）寅卯空
+# 甲寅旬（甲寅→癸亥）子丑空
+XUNKONG = {
+    "甲子": ("戌", "亥"), "乙丑": ("戌", "亥"), "丙寅": ("戌", "亥"), "丁卯": ("戌", "亥"),
+    "戊辰": ("戌", "亥"), "己巳": ("戌", "亥"), "庚午": ("戌", "亥"), "辛未": ("戌", "亥"),
+    "壬申": ("戌", "亥"), "癸酉": ("戌", "亥"),
+    "甲戌": ("申", "酉"), "乙亥": ("申", "酉"), "丙子": ("申", "酉"), "丁丑": ("申", "酉"),
+    "戊寅": ("申", "酉"), "己卯": ("申", "酉"), "庚辰": ("申", "酉"), "辛巳": ("申", "酉"),
+    "壬午": ("申", "酉"), "癸未": ("申", "酉"),
+    "甲申": ("午", "未"), "乙酉": ("午", "未"), "丙戌": ("午", "未"), "丁亥": ("午", "未"),
+    "戊子": ("午", "未"), "己丑": ("午", "未"), "庚寅": ("午", "未"), "辛卯": ("午", "未"),
+    "壬辰": ("午", "未"), "癸巳": ("午", "未"),
+    "甲午": ("辰", "巳"), "乙未": ("辰", "巳"), "丙申": ("辰", "巳"), "丁酉": ("辰", "巳"),
+    "戊戌": ("辰", "巳"), "己亥": ("辰", "巳"), "庚子": ("辰", "巳"), "辛丑": ("辰", "巳"),
+    "壬寅": ("辰", "巳"), "癸卯": ("辰", "巳"),
+    "甲辰": ("寅", "卯"), "乙巳": ("寅", "卯"), "丙午": ("寅", "卯"), "丁未": ("寅", "卯"),
+    "戊申": ("寅", "卯"), "己酉": ("寅", "卯"), "庚戌": ("寅", "卯"), "辛亥": ("寅", "卯"),
+    "壬子": ("寅", "卯"), "癸丑": ("寅", "卯"),
+    "甲寅": ("子", "丑"), "乙卯": ("子", "丑"), "丙辰": ("子", "丑"), "丁巳": ("子", "丑"),
+    "戊午": ("子", "丑"), "己未": ("子", "丑"), "庚申": ("子", "丑"), "辛酉": ("子", "丑"),
+    "壬戌": ("子", "丑"), "癸亥": ("子", "丑"),
+}
+
+
+# ============================================================
+# BaziCalculator 扩展方法
+# ============================================================
+
+# 以下方法通过 monkey-patch 添加到 BaziCalculator 类
+# 或直接修改类的定义
+
+import json as _json
+
+
+def _get_nayin(self, ganzhi):
+    """
+    根据干支查询纳音五行
+
+    依据：《渊海子平》六十甲子纳音歌诀
+
+    Args:
+        ganzhi: 干支组合（如 '甲子'、'丙寅'），2字符
+
+    Returns:
+        dict: {"ganzhi": "甲子", "nayin": "海中金", "wuxing": "金"}
+    """
+    nayin_name = NAYIN.get(ganzhi, "未知")
+    return {
+        "ganzhi": ganzhi,
+        "nayin": nayin_name,
+        "wuxing": NAYIN_WUXING.get(nayin_name, "未知"),
+    }
+
+
+def _get_xunkong(self, day_ganzhi):
+    """
+    根据日柱干支计算空亡地支（旬空）
+
+    依据：《渊海子平》六甲旬空法
+    甲子旬戌亥空……以此类推，以日柱所在旬为准
+
+    Args:
+        day_ganzhi: 日柱干支（如 '甲子'）
+
+    Returns:
+        list[str]: 空亡地支列表（2个）
+    """
+    return list(XUNKONG.get(day_ganzhi, ("未知", "未知")))
+
+
+def _calculate_sizhu_extended(self, year, month, day, hour, gender):
+    """
+    扩展版排盘：在原有基础上增加纳音和空亡
+
+    Returns:
+        dict: 包含完整命盘数据，比基类多了每个柱的纳音和空亡信息
+    """
+    result = self._calculate_sizhu_original(year, month, day, hour, gender)
+
+    # 为每个柱添加纳音
+    for key in ["year", "month", "day", "hour"]:
+        result[f"{key}_nayin"] = _get_nayin(self, result[key])
+
+    # 空亡：以日柱为基准
+    result["xunkong"] = _get_xunkong(self, result["day"])
+
+    return result
+
+
+# ============================================================
+# BaziAnalyzer 扩展方法
+# ============================================================
+
+def _to_dict(self):
+    """
+    将完整命盘分析数据转为结构化字典
+
+    为 AI 代理（如 OpenClaw）和外部程序提供标准化的数据接口。
+    所有命理数据均以字典形式组织，可直接用于 JSON 序列化。
+
+    Returns:
+        dict: 包含命盘总览、十神、五行、旺衰、格局、大运等完整数据结构
+    """
+    wangshuai = self.analyze_wangshuai()
+    xiyong = self.determine_xiyong(wangshuai)
+
+    result = {
+        "命盘总览": {
+            "年柱": {
+                "干支": self.data.get("year", ""),
+                "天干": self.data["year"][0] if self.data.get("year") else "",
+                "地支": self.data["year"][1] if self.data.get("year") else "",
+                "五行": TIANGAN_WUXING.get(self.data["year"][0], "?") if self.data.get("year") else "?",
+                "阴阳": TIANGAN_YINYANG.get(self.data["year"][0], "?") if self.data.get("year") else "?",
+                "藏干": DIZHI_CANGGAN.get(self.data["year"][1], []) if self.data.get("year") else [],
+                "纳音": self.data.get("year_nayin", {}),
+            },
+            "月柱": {
+                "干支": self.data.get("month", ""),
+                "天干": self.data["month"][0] if self.data.get("month") else "",
+                "地支": self.data["month"][1] if self.data.get("month") else "",
+                "五行": TIANGAN_WUXING.get(self.data["month"][0], "?") if self.data.get("month") else "?",
+                "阴阳": TIANGAN_YINYANG.get(self.data["month"][0], "?") if self.data.get("month") else "?",
+                "藏干": DIZHI_CANGGAN.get(self.data["month"][1], []) if self.data.get("month") else [],
+                "纳音": self.data.get("month_nayin", {}),
+            },
+            "日柱": {
+                "干支": self.data.get("day", ""),
+                "天干": self.data["day"][0] if self.data.get("day") else "",
+                "地支": self.data["day"][1] if self.data.get("day") else "",
+                "五行": TIANGAN_WUXING.get(self.data["day"][0], "?") if self.data.get("day") else "?",
+                "阴阳": TIANGAN_YINYANG.get(self.data["day"][0], "?") if self.data.get("day") else "?",
+                "藏干": DIZHI_CANGGAN.get(self.data["day"][1], []) if self.data.get("day") else [],
+                "纳音": self.data.get("day_nayin", {}),
+                "日主": True,
+            },
+            "时柱": {
+                "干支": self.data.get("hour", ""),
+                "天干": self.data["hour"][0] if self.data.get("hour") else "",
+                "地支": self.data["hour"][1] if self.data.get("hour") else "",
+                "五行": TIANGAN_WUXING.get(self.data["hour"][0], "?") if self.data.get("hour") else "?",
+                "阴阳": TIANGAN_YINYANG.get(self.data["hour"][0], "?") if self.data.get("hour") else "?",
+                "藏干": DIZHI_CANGGAN.get(self.data["hour"][1], []) if self.data.get("hour") else [],
+                "纳音": self.data.get("hour_nayin", {}),
+            },
+            "月令": self.data.get("yuejian", ""),
+            "空亡": self.data.get("xunkong", []),
+        },
+        "十神分析": {
+            "天干十神": {},
+            "地支藏干十神": {},
+            "十神统计": self.get_shishen_distribution(),
+        },
+        "五行力量": {
+            "天干": {},
+            "地支": {},
+            "分布统计": self.get_wuxing_distribution(),
+        },
+        "旺衰分析": {
+            "日主": f"{self.day_gan}({TIANGAN_WUXING.get(self.day_gan, '?')})",
+            "评分": wangshuai["score"],
+            "结果": wangshuai["result"],
+            "详细": wangshuai["details"],
+        },
+        "格局分析": {
+            "格局": self.analyze_geju(),
+            "喜用神": xiyong["xishen"],
+            "忌神": xiyong["jishen"],
+            "策略": xiyong["strategy"],
+        },
+        "大运": self.data.get("dayun", []),
+        "大运方向": self.data.get("dayun_direction", "未知"),
+    }
+
+    # 填充天干十神
+    for label, key in [("年干", "year"), ("月干", "month"), ("日干", "day"), ("时干", "hour")]:
+        if self.data.get(key):
+            gan = self.data[key][0]
+            if key == "day":
+                result["十神分析"]["天干十神"][label] = "日主"
+            else:
+                result["十神分析"]["天干十神"][label] = get_shishen(self.day_gan, gan)
+
+    # 填充地支藏干十神
+    for label, key in [("年支", "year"), ("月支", "month"), ("日支", "day"), ("时支", "hour")]:
+        if self.data.get(key):
+            zhi = self.data[key][1]
+            canggan_list = []
+            for cg in DIZHI_CANGGAN.get(zhi, []):
+                ss = get_shishen(self.day_gan, cg)
+                canggan_list.append(f"{cg}({ss})")
+            result["十神分析"]["地支藏干十神"][label] = canggan_list
+
+    # 填充天干/地支五行
+    for label, key in [("年柱", "year"), ("月柱", "month"), ("日柱", "day"), ("时柱", "hour")]:
+        if self.data.get(key):
+            g, z = self.data[key][0], self.data[key][1]
+            result["五行力量"]["天干"][label] = f"{g}({TIANGAN_WUXING.get(g, '?')})"
+            result["五行力量"]["地支"][label] = f"{z}({DIZHI_WUXING.get(z, '?')})"
+
+    return result
+
+
+def _to_json(self, indent=2, ensure_ascii=False):
+    """
+    将命盘分析数据转为 JSON 字符串
+
+    Args:
+        indent: JSON 缩进空格数（默认2）
+        ensure_ascii: 是否转义非 ASCII 字符（默认 False，保留中文）
+
+    Returns:
+        str: JSON 字符串
+    """
+    return _json.dumps(_to_dict(self), indent=indent, ensure_ascii=ensure_ascii)
+
+
+# ============================================================
+# 将扩展方法注入到类中
+# ============================================================
+
+BaziCalculator.get_nayin = _get_nayin
+BaziCalculator.get_xunkong = _get_xunkong
+BaziCalculator._calculate_sizhu_original = BaziCalculator.calculate_sizhu
+BaziCalculator.calculate_sizhu = _calculate_sizhu_extended
+BaziAnalyzer.to_dict = _to_dict
+BaziAnalyzer.to_json = _to_json
