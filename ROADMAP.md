@@ -7,7 +7,7 @@
 | 版本 | 迭代窗口 | 状态 | 模块 | 内容概要 |
 |------|---------|------|------|----------|
 | v1.1.0 | 第1周 | ✅ 已完成 | bazi_engine.py | 结构化输出 + 纳音五行 + 空亡计算 |
-| v1.1.1 | 第3周 | 🔄 进行中 | bazi_engine.py | 神煞系统(上)：天乙贵人、文昌贵人、太极贵人、学堂词馆 |
+| v1.1.1 | 第3周 | ✅ 已完成 | bazi_engine.py | 神煞系统(上)：天乙贵人、文昌贵人、太极贵人、学堂词馆 |
 | v1.1.2 | 第5周 | ⬜ 待开始 | bazi_engine.py | 神煞系统(下)：桃花(咸池)、羊刃、驿马、华盖、将星、孤辰、寡宿、红鸾天喜 |
 | v1.1.3 | 第7周 | ⬜ 待开始 | bazi_engine.py | 胎元 + 命宫计算（含天干地支、纳音、十神） |
 | v1.1.4 | 第9周 | ⬜ 待开始 | bazi_engine.py | 身宫计算 + 五行力量加权量化评分 |
@@ -46,12 +46,12 @@
 ### v1.1.1 — 神煞系统（上）
 **文件：** `bazi_engine.py`
 
-- [ ] `ShenshaCalculator` 类
-- [ ] `tianyi_guiren(day_gan, year_gan)` — 天乙贵人（日干+年干双查）
-- [ ] `wenchang_xueren(day_gan)` — 文昌贵人（日干查地支）
-- [ ] `taiji_guiren(day_gan, year_gan)` — 太极贵人
-- [ ] `xuetang_ciguan(day_gan)` — 学堂词馆
-- [ ] `BaziAnalyzer.get_shensha()` 集成入口
+- [x] `ShenshaCalculator` 类
+- [x] `tianyi_guiren(day_gan, year_gan)` — 天乙贵人（日干+年干双查）
+- [x] `wenchang_xueren(day_gan)` — 文昌贵人（日干查地支）
+- [x] `taiji_guiren(day_gan, year_gan)` — 太极贵人
+- [x] `xuetang_ciguan(day_gan)` — 学堂词馆
+- [x] `BaziAnalyzer.get_shensha()` 集成入口
 
 ### v1.1.2 — 神煞系统（下）
 **文件：** `bazi_engine.py`
