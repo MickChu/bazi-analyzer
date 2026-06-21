@@ -535,6 +535,254 @@ class BaziAnalyzer:
 
 
 # ============================================================
+# 神煞计算器
+# ============================================================
+
+class ShenshaCalculator:
+    """
+    神煞计算器，负责查算八字常用吉神
+
+    依据：《渊海子平》《三命通会》神煞章节
+    """
+
+    # 天乙贵人表：日干/年干 → 贵人地支对
+    # 口诀：甲戊庚牛羊，乙己鼠猴乡，丙丁猪鸡位，
+    #       壬癸兔蛇藏，六辛逢虎马，此是贵人方
+    _TIANYI = {
+        "甲": ["丑", "未"], "乙": ["子", "申"],
+        "丙": ["亥", "酉"], "丁": ["亥", "酉"],
+        "戊": ["丑", "未"], "己": ["子", "申"],
+        "庚": ["丑", "未"], "辛": ["寅", "午"],
+        "壬": ["卯", "巳"], "癸": ["卯", "巳"],
+    }
+
+    # 文昌贵人表：日干 → 文昌所在地支
+    # 口诀：甲乙巳午报君知，丙戊申宫丁己鸡，
+    #       庚猪辛鼠壬逢虎，癸人见卯入云梯
+    _WENCHANG = {
+        "甲": "巳", "乙": "午", "丙": "申", "丁": "酉",
+        "戊": "申", "己": "酉", "庚": "亥", "辛": "子",
+        "壬": "寅", "癸": "卯",
+    }
+
+    # 太极贵人表：日干/年干 → 太极所在地支
+    # 口诀：甲乙子午，丙丁卯酉，戊己四季辰戌丑未，
+    #       庚辛寅亥，壬癸巳申
+    _TAIJI = {
+        "甲": ["子", "午"], "乙": ["子", "午"],
+        "丙": ["卯", "酉"], "丁": ["卯", "酉"],
+        "戊": ["辰", "戌", "丑", "未"], "己": ["辰", "戌", "丑", "未"],
+        "庚": ["寅", "亥"], "辛": ["寅", "亥"],
+        "壬": ["巳", "申"], "癸": ["巳", "申"],
+    }
+
+    # 学堂表：日干 → 长生位地支
+    # 甲亥、乙午、丙寅、丁酉、戊寅、己酉、庚巳、辛子、壬申、癸卯
+    _XUETANG = {
+        "甲": "亥", "乙": "午", "丙": "寅", "丁": "酉",
+        "戊": "寅", "己": "酉", "庚": "巳", "辛": "子",
+        "壬": "申", "癸": "卯",
+    }
+
+    # 词馆表：日干 → 临官位地支
+    # 甲寅、乙卯、丙巳、丁午、戊巳、己午、庚申、辛酉、壬亥、癸子
+    _CIGUAN = {
+        "甲": "寅", "乙": "卯", "丙": "巳", "丁": "午",
+        "戊": "巳", "己": "午", "庚": "申", "辛": "酉",
+        "壬": "亥", "癸": "子",
+    }
+
+    def __init__(self, sizhu_data):
+        """
+        Args:
+            sizhu_data: BaziCalculator.calculate_sizhu() 返回值，
+                        需包含 year/month/day/hour 四柱干支
+        """
+        self.data = sizhu_data
+        self.year_gan = sizhu_data["year"][0]
+        self.year_zhi = sizhu_data["year"][1]
+        self.month_zhi = sizhu_data["month"][1]
+        self.day_gan = sizhu_data["day"][0]
+        self.day_zhi = sizhu_data["day"][1]
+        self.hour_zhi = sizhu_data["hour"][1]
+
+        # 四柱所有地支
+        self.all_zhi = [
+            self.year_zhi, self.month_zhi,
+            self.day_zhi, self.hour_zhi,
+        ]
+
+    def tianyi_guiren(self, day_gan=None, year_gan=None):
+        """
+        天乙贵人 — 日干/年干双查
+
+        天乙贵人为命中最吉之神，主遇难呈祥、贵人扶助。
+        以日干为主，年干为辅，查四柱地支是否出现贵人。
+
+        Args:
+            day_gan: 日干（默认使用实例 day_gan）
+            year_gan: 年干（默认使用实例 year_gan）
+
+        Returns:
+            dict: {
+                "日干查": [贵人所在的四柱位置列表],
+                "年干查": [贵人所在的四柱位置列表],
+                "贵人地支": list[str],
+                "所在柱位": list[str],
+            }
+        """
+        day_gan = day_gan or self.day_gan
+        year_gan = year_gan or self.year_gan
+
+        result = {"日干查": [], "年干查": [], "贵人地支": set(), "所在柱位": []}
+
+        # 日干查
+        guiren_zhi = self._TIANYI.get(day_gan, [])
+        for gz in guiren_zhi:
+            result["贵人地支"].add(gz)
+        
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi in guiren_zhi:
+                result["日干查"].append(f"{label}支/{zhi}")
+                result["所在柱位"].append(label)
+
+        # 年干查
+        guiren_zhi_yr = self._TIANYI.get(year_gan, [])
+        for gz in guiren_zhi_yr:
+            result["贵人地支"].add(gz)
+
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi in guiren_zhi_yr and f"{label}支/{zhi}" not in result["日干查"]:
+                result["年干查"].append(f"{label}支/{zhi}")
+                if label not in result["所在柱位"]:
+                    result["所在柱位"].append(label)
+
+        result["贵人地支"] = sorted(result["贵人地支"])
+        return result
+
+    def wenchang_xueren(self, day_gan=None):
+        """
+        文昌贵人 — 日干查地支
+
+        文昌贵人主聪明好学、文采出众、考试运佳。
+        以日干查四柱地支是否出现文昌。
+
+        Args:
+            day_gan: 日干（默认使用实例 day_gan）
+
+        Returns:
+            dict: {
+                "文昌地支": str,
+                "所在柱位": list[str] | None,
+                "有文昌": bool,
+            }
+        """
+        day_gan = day_gan or self.day_gan
+        wenchang_zhi = self._WENCHANG.get(day_gan, "")
+
+        positions = []
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi == wenchang_zhi:
+                positions.append(label)
+
+        return {
+            "文昌地支": wenchang_zhi,
+            "所在柱位": positions or None,
+            "有文昌": len(positions) > 0,
+        }
+
+    def taiji_guiren(self, day_gan=None, year_gan=None):
+        """
+        太极贵人 — 日干/年干双查
+
+        太极贵人主聪明好学、喜神秘文化、有特殊才能。
+        以日干为主，年干为辅，查四柱地支是否出现。
+
+        Args:
+            day_gan: 日干（默认使用实例 day_gan）
+            year_gan: 年干（默认使用实例 year_gan）
+
+        Returns:
+            dict: 与 tianyi_guiren 结构相同
+        """
+        day_gan = day_gan or self.day_gan
+        year_gan = year_gan or self.year_gan
+
+        result = {"日干查": [], "年干查": [], "贵人地支": set(), "所在柱位": []}
+
+        taiji_zhi = self._TAIJI.get(day_gan, [])
+        for gz in taiji_zhi:
+            result["贵人地支"].add(gz)
+
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi in taiji_zhi:
+                result["日干查"].append(f"{label}支/{zhi}")
+                result["所在柱位"].append(label)
+
+        taiji_zhi_yr = self._TAIJI.get(year_gan, [])
+        for gz in taiji_zhi_yr:
+            result["贵人地支"].add(gz)
+
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi in taiji_zhi_yr and f"{label}支/{zhi}" not in result["日干查"]:
+                result["年干查"].append(f"{label}支/{zhi}")
+                if label not in result["所在柱位"]:
+                    result["所在柱位"].append(label)
+
+        result["贵人地支"] = sorted(result["贵人地支"])
+        return result
+
+    def xuetang_ciguan(self, day_gan=None):
+        """
+        学堂词馆 — 日干查地支
+
+        学堂词馆主学业有成、科甲功名、聪明俊秀。
+        学堂在长生位，词馆在临官位。
+
+        Args:
+            day_gan: 日干（默认使用实例 day_gan）
+
+        Returns:
+            dict: {
+                "学堂": {"所在地支": str, "所在柱位": list | None, "有学堂": bool},
+                "词馆": {"所在地支": str, "所在柱位": list | None, "有词馆": bool},
+            }
+        """
+        day_gan = day_gan or self.day_gan
+
+        xuetang_zhi = self._XUETANG.get(day_gan, "")
+        ciguan_zhi = self._CIGUAN.get(day_gan, "")
+
+        xt_positions = []
+        cg_positions = []
+
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi == xuetang_zhi:
+                xt_positions.append(label)
+            if zhi == ciguan_zhi:
+                cg_positions.append(label)
+
+        return {
+            "学堂": {
+                "所在地支": xuetang_zhi,
+                "所在柱位": xt_positions or None,
+                "有学堂": len(xt_positions) > 0,
+            },
+            "词馆": {
+                "所在地支": ciguan_zhi,
+                "所在柱位": cg_positions or None,
+                "有词馆": len(cg_positions) > 0,
+            },
+        }
+
+
+# ============================================================
 # 纳音五行（六十甲子纳音表）
 # ============================================================
 
@@ -749,6 +997,7 @@ def _to_dict(self):
             "忌神": xiyong["jishen"],
             "策略": xiyong["strategy"],
         },
+        "神煞": self.get_shensha(),
         "大运": self.data.get("dayun", []),
         "大运方向": self.data.get("dayun_direction", "未知"),
     }
@@ -800,9 +1049,31 @@ def _to_json(self, indent=2, ensure_ascii=False):
 # 将扩展方法注入到类中
 # ============================================================
 
+def _get_shensha(self):
+    """
+    神煞查询入口 — 返回四类吉神在四柱中的分布
+
+    Returns:
+        dict: {
+            "天乙贵人": tianyi_guiren() 返回值,
+            "文昌贵人": wenchang_xueren() 返回值,
+            "太极贵人": taiji_guiren() 返回值,
+            "学堂词馆": xuetang_ciguan() 返回值,
+        }
+    """
+    sc = ShenshaCalculator(self.data)
+    return {
+        "天乙贵人": sc.tianyi_guiren(),
+        "文昌贵人": sc.wenchang_xueren(),
+        "太极贵人": sc.taiji_guiren(),
+        "学堂词馆": sc.xuetang_ciguan(),
+    }
+
+
 BaziCalculator.get_nayin = _get_nayin
 BaziCalculator.get_xunkong = _get_xunkong
 BaziCalculator._calculate_sizhu_original = BaziCalculator.calculate_sizhu
 BaziCalculator.calculate_sizhu = _calculate_sizhu_extended
 BaziAnalyzer.to_dict = _to_dict
 BaziAnalyzer.to_json = _to_json
+BaziAnalyzer.get_shensha = _get_shensha

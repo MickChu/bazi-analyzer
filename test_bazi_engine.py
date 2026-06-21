@@ -8,6 +8,7 @@ bazi_engine.py 单元测试
 - 空亡/旬空计算
 - 结构化输出 to_dict() / to_json()
 - 四柱排盘（含纳音和空亡）
+- 神煞系统(上)：天乙贵人、文昌贵人、太极贵人、学堂词馆
 """
 
 import sys
@@ -18,7 +19,7 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bazi_engine import (
-    BaziCalculator, BaziAnalyzer,
+    BaziCalculator, BaziAnalyzer, ShenshaCalculator,
     NAYIN, NAYIN_WUXING, XUNKONG,
     TIANGAN, DIZHI,
 )
@@ -206,6 +207,181 @@ def test_backward_compat():
     print("✅ test_backward_compat: 向后兼容性正常")
 
 
+# ============================================================
+# v1.1.1 神煞系统（上）测试
+# ============================================================
+
+def test_tianyi_guiren():
+    """测试：天乙贵人日干/年干双查"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    sc = ShenshaCalculator(sz)
+
+    result = sc.tianyi_guiren()
+    assert "日干查" in result
+    assert "年干查" in result
+    assert "贵人地支" in result
+    assert "所在柱位" in result
+    assert isinstance(result["贵人地支"], list)
+
+    # 1990年6月15日12时 男: 年庚午, 月壬午, 日辛亥, 时甲午
+    # 日干辛: 天乙贵人在寅/午
+    # 年干庚: 天乙贵人在丑/未
+    assert "午" in result["贵人地支"], f"日干辛应有贵人午，实际: {result['贵人地支']}"
+
+    print(f"✅ test_tianyi_guiren: 天乙贵人计算正常")
+    print(f"   日干辛: 贵人地支 {result['贵人地支']}")
+    print(f"   日干查: {result['日干查']}")
+    print(f"   年干查: {result['年干查']}")
+
+
+def test_tianyi_table():
+    """测试：天乙贵人表完整性 — 十天干全覆盖"""
+    from bazi_engine import TIANGAN
+    for gan in TIANGAN:
+        assert gan in ShenshaCalculator._TIANYI, f"缺少 {gan} 天乙贵人"
+        zhi_list = ShenshaCalculator._TIANYI[gan]
+        assert len(zhi_list) == 2, f"{gan} 天乙贵人应为2个，实际 {len(zhi_list)}"
+    print("✅ test_tianyi_table: 天乙贵人表完整覆盖十天干")
+
+
+def test_wenchang_xueren():
+    """测试：文昌贵人日干查"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1984, 2, 4, 8, "男")
+    sc = ShenshaCalculator(sz)
+
+    result = sc.wenchang_xueren()
+    assert "文昌地支" in result
+    assert "所在柱位" in result
+    assert "有文昌" in result
+
+    # 1984年2月4日8时 男: 年癸亥, 月乙丑, 日戊辰, 时丙辰
+    # 日干戊: 文昌在申
+    assert result["文昌地支"] == "申", f"日干戊文昌应为申，实际: {result['文昌地支']}"
+
+    print(f"✅ test_wenchang_xueren: 文昌贵人计算正常")
+    print(f"   日干戊: 文昌在{result['文昌地支']}, 有文昌={result['有文昌']}")
+
+
+def test_wenchang_table():
+    """测试：文昌贵人表完整性"""
+    for gan in TIANGAN:
+        assert gan in ShenshaCalculator._WENCHANG, f"缺少 {gan} 文昌"
+        assert ShenshaCalculator._WENCHANG[gan] in DIZHI, \
+            f"{gan} 文昌地支不在十二地支中"
+    print("✅ test_wenchang_table: 文昌贵人表完整")
+
+
+def test_taiji_guiren():
+    """测试：太极贵人日干/年干双查"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    sc = ShenshaCalculator(sz)
+
+    result = sc.taiji_guiren()
+    assert "日干查" in result
+    assert "年干查" in result
+    assert "贵人地支" in result
+
+    # 日干辛: 太极在寅/亥
+    # 年干庚: 太极在寅/亥
+    assert "寅" in result["贵人地支"] or "亥" in result["贵人地支"], \
+        f"日干辛太极应有寅或亥，实际: {result['贵人地支']}"
+
+    print(f"✅ test_taiji_guiren: 太极贵人计算正常")
+    print(f"   日干辛: 太极地支 {result['贵人地支']}")
+    print(f"   日干查: {result['日干查']}")
+
+
+def test_taiji_table():
+    """测试：太极贵人表完整性"""
+    for gan in TIANGAN:
+        assert gan in ShenshaCalculator._TAIJI, f"缺少 {gan} 太极贵人"
+    # 戊己应有四季(4个)
+    for gan in ["戊", "己"]:
+        assert len(ShenshaCalculator._TAIJI[gan]) == 4, \
+            f"{gan} 太极贵人应为4个(四季)，实际 {len(ShenshaCalculator._TAIJI[gan])}"
+    print("✅ test_taiji_table: 太极贵人表完整")
+
+
+def test_xuetang_ciguan():
+    """测试：学堂词馆日干查"""
+    calc = BaziCalculator()
+    # 日干甲 → 学堂亥, 词馆寅
+    sz = calc.calculate_sizhu(1984, 2, 2, 8, "男")
+    sc = ShenshaCalculator(sz)
+
+    result = sc.xuetang_ciguan()
+    assert "学堂" in result
+    assert "词馆" in result
+    assert "所在地支" in result["学堂"]
+    assert "有学堂" in result["学堂"]
+    assert "有词馆" in result["词馆"]
+
+    print(f"✅ test_xuetang_ciguan: 学堂词馆计算正常")
+    print(f"   学堂: {result['学堂']}")
+    print(f"   词馆: {result['词馆']}")
+
+
+def test_xuetang_ciguan_table():
+    """测试：学堂词馆表完整性"""
+    for gan in TIANGAN:
+        assert gan in ShenshaCalculator._XUETANG, f"缺少 {gan} 学堂"
+        assert ShenshaCalculator._XUETANG[gan] in DIZHI, \
+            f"{gan} 学堂地支不在十二地支中"
+        assert gan in ShenshaCalculator._CIGUAN, f"缺少 {gan} 词馆"
+        assert ShenshaCalculator._CIGUAN[gan] in DIZHI, \
+            f"{gan} 词馆地支不在十二地支中"
+    print("✅ test_xuetang_ciguan_table: 学堂词馆表完整")
+
+
+def test_get_shensha_integration():
+    """测试：BaziAnalyzer.get_shensha() 集成入口"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+
+    result = az.get_shensha()
+    assert "天乙贵人" in result
+    assert "文昌贵人" in result
+    assert "太极贵人" in result
+    assert "学堂词馆" in result
+
+    # 验证结构完整性
+    ty = result["天乙贵人"]
+    assert "日干查" in ty
+    assert "年干查" in ty
+    assert "贵人地支" in ty
+    assert "所在柱位" in ty
+
+    wc = result["文昌贵人"]
+    assert "文昌地支" in wc
+    assert "有文昌" in wc
+
+    xc = result["学堂词馆"]
+    assert "有学堂" in xc["学堂"]
+    assert "有词馆" in xc["词馆"]
+
+    print("✅ test_get_shensha_integration: 集成入口正常")
+
+
+def test_to_dict_with_shensha():
+    """测试：to_dict() 包含神煞数据"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+
+    result = az.to_dict()
+    assert "神煞" in result, "to_dict 应包含 神煞 字段"
+    assert "天乙贵人" in result["神煞"]
+    assert "文昌贵人" in result["神煞"]
+    assert "太极贵人" in result["神煞"]
+    assert "学堂词馆" in result["神煞"]
+
+    print("✅ test_to_dict_with_shensha: to_dict 包含神煞数据")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("bazi_engine.py 单元测试 — v1.1.0 新增功能")
@@ -221,6 +397,17 @@ if __name__ == "__main__":
         test_to_dict,
         test_to_json,
         test_backward_compat,
+        # v1.1.1 神煞系统（上）
+        test_tianyi_table,
+        test_tianyi_guiren,
+        test_wenchang_table,
+        test_wenchang_xueren,
+        test_taiji_table,
+        test_taiji_guiren,
+        test_xuetang_ciguan_table,
+        test_xuetang_ciguan,
+        test_get_shensha_integration,
+        test_to_dict_with_shensha,
     ]
 
     passed = 0
