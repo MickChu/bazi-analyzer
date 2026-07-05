@@ -8,7 +8,7 @@
 |------|---------|------|------|----------|
 | v1.1.0 | 第1周 | ✅ 已完成 | bazi_engine.py | 结构化输出 + 纳音五行 + 空亡计算 |
 | v1.1.1 | 第3周 | ✅ 已完成 | bazi_engine.py | 神煞系统(上)：天乙贵人、文昌贵人、太极贵人、学堂词馆 |
-| v1.1.2 | 第5周 | ⬜ 待开始 | bazi_engine.py | 神煞系统(下)：桃花(咸池)、羊刃、驿马、华盖、将星、孤辰、寡宿、红鸾天喜 |
+| v1.1.2 | 第5周 | ✅ 已完成 | bazi_engine.py | 神煞系统(下)：桃花(咸池)、羊刃、驿马、华盖、将星、孤辰、寡宿、红鸾天喜 |
 | v1.1.3 | 第7周 | ⬜ 待开始 | bazi_engine.py | 胎元 + 命宫计算（含天干地支、纳音、十神） |
 | v1.1.4 | 第9周 | ⬜ 待开始 | bazi_engine.py | 身宫计算 + 五行力量加权量化评分 |
 | v1.2.0 | 第11周 | ⬜ 待开始 | excel_report.py | 框架搭建 + 样式系统；Sheet 1：命盘总览 |
@@ -56,14 +56,14 @@
 ### v1.1.2 — 神煞系统（下）
 **文件：** `bazi_engine.py`
 
-- [ ] `taohua(day_zhi, year_zhi)` — 桃花/咸池
-- [ ] `yangren(day_gan)` — 羊刃（阳干帝旺位）
-- [ ] `yima(day_zhi, year_zhi)` — 驿马
-- [ ] `huagai(day_zhi)` — 华盖
-- [ ] `jiangxing(day_zhi)` — 将星
-- [ ] `guchen_guasu(day_zhi)` — 孤辰、寡宿
-- [ ] `hongluan_tianxi(day_zhi)` — 红鸾、天喜
-- [ ] 神煞汇总输出（去重、标注吉凶）
+- [x] `taohua(day_zhi, year_zhi)` — 桃花/咸池
+- [x] `yangren(day_gan)` — 羊刃（阳干帝旺位，阴干墓库位）
+- [x] `yima(day_zhi, year_zhi)` — 驿马
+- [x] `huagai(day_zhi)` — 华盖
+- [x] `jiangxing(day_zhi)` — 将星
+- [x] `guchen_guasu(day_zhi)` — 孤辰、寡宿
+- [x] `hongluan_tianxi(day_zhi)` — 红鸾、天喜
+- [x] 神煞汇总输出（去重、标注吉凶）
 
 ### v1.1.3 — 胎元 + 命宫
 **文件：** `bazi_engine.py`

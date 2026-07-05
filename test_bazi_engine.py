@@ -337,49 +337,53 @@ def test_xuetang_ciguan_table():
 
 
 def test_get_shensha_integration():
-    """测试：BaziAnalyzer.get_shensha() 集成入口"""
+    """测试：BaziAnalyzer.get_shensha() 集成入口 (v1.1.2 11神煞)"""
     calc = BaziCalculator()
     sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
     az = BaziAnalyzer(sz)
 
     result = az.get_shensha()
-    assert "天乙贵人" in result
-    assert "文昌贵人" in result
-    assert "太极贵人" in result
-    assert "学堂词馆" in result
+    assert "详细" in result
+    assert "汇总" in result
 
-    # 验证结构完整性
-    ty = result["天乙贵人"]
+    detail = result["详细"]
+    for name in ["天乙贵人", "文昌贵人", "太极贵人", "学堂词馆",
+                 "桃花", "羊刃", "驿马", "华盖", "将星", "孤辰寡宿", "红鸾天喜"]:
+        assert name in detail, f"缺少 {name}"
+        assert "data" in detail[name], f"{name} 缺少 data"
+        assert "吉凶" in detail[name], f"{name} 缺少 吉凶"
+
+    # 验证天乙贵人 data 结构
+    ty = detail["天乙贵人"]["data"]
     assert "日干查" in ty
     assert "年干查" in ty
-    assert "贵人地支" in ty
-    assert "所在柱位" in ty
 
-    wc = result["文昌贵人"]
-    assert "文昌地支" in wc
-    assert "有文昌" in wc
+    # 验证汇总
+    summary = result["汇总"]
+    assert "吉神命中" in summary
+    assert "凶煞命中" in summary
+    assert "总计" in summary
 
-    xc = result["学堂词馆"]
-    assert "有学堂" in xc["学堂"]
-    assert "有词馆" in xc["词馆"]
-
-    print("✅ test_get_shensha_integration: 集成入口正常")
+    print("✅ test_get_shensha_integration: 集成入口正常 (v1.1.2 11神煞)")
 
 
 def test_to_dict_with_shensha():
-    """测试：to_dict() 包含神煞数据"""
+    """测试：to_dict() 包含完整11神煞数据"""
     calc = BaziCalculator()
     sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
     az = BaziAnalyzer(sz)
 
     result = az.to_dict()
     assert "神煞" in result, "to_dict 应包含 神煞 字段"
-    assert "天乙贵人" in result["神煞"]
-    assert "文昌贵人" in result["神煞"]
-    assert "太极贵人" in result["神煞"]
-    assert "学堂词馆" in result["神煞"]
+    shensha = result["神煞"]
+    assert "详细" in shensha
+    assert "汇总" in shensha
+    detail = shensha["详细"]
+    for name in ["天乙贵人", "文昌贵人", "太极贵人", "学堂词馆",
+                 "桃花", "羊刃", "驿马", "华盖", "将星", "孤辰寡宿", "红鸾天喜"]:
+        assert name in detail, f"to_dict 神煞缺少 {name}"
 
-    print("✅ test_to_dict_with_shensha: to_dict 包含神煞数据")
+    print("✅ test_to_dict_with_shensha: to_dict 包含完整11神煞数据")
 
 
 if __name__ == "__main__":

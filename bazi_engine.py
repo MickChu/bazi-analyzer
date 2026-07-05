@@ -781,6 +781,409 @@ class ShenshaCalculator:
             },
         }
 
+    # --- 三合局辅助 ---
+    @staticmethod
+    def _get_sanhe_ju(zhi):
+        """
+        根据地支返回所在三合局
+
+        申子辰(水)、寅午戌(火)、亥卯未(木)、巳酉丑(金)
+        返回 (局名, 局中地支列表)
+        """
+        for ju_name, ju_zhi in [("申子辰水局", ["申", "子", "辰"]),
+                                ("寅午戌火局", ["寅", "午", "戌"]),
+                                ("亥卯未木局", ["亥", "卯", "未"]),
+                                ("巳酉丑金局", ["巳", "酉", "丑"])]:
+            if zhi in ju_zhi:
+                return ju_name, ju_zhi
+        return None, []
+
+    @staticmethod
+    def _get_sanhui_ju(zhi):
+        """
+        根据地支返回所在三会局（季节局）
+
+        寅卯辰(春木)、巳午未(夏火)、申酉戌(秋金)、亥子丑(冬水)
+        返回 (局名, 局中地支列表)
+        """
+        for ju_name, ju_zhi in [("寅卯辰木局", ["寅", "卯", "辰"]),
+                                ("巳午未火局", ["巳", "午", "未"]),
+                                ("申酉戌金局", ["申", "酉", "戌"]),
+                                ("亥子丑水局", ["亥", "子", "丑"])]:
+            if zhi in ju_zhi:
+                return ju_name, ju_zhi
+        return None, []
+
+    # --- 桃花/咸池 ---
+    # 口诀：申子辰在酉，寅午戌在卯，亥卯未在子，巳酉丑在午
+    _TAOHUA = {
+        "申": "酉", "子": "酉", "辰": "酉",
+        "寅": "卯", "午": "卯", "戌": "卯",
+        "亥": "子", "卯": "子", "未": "子",
+        "巳": "午", "酉": "午", "丑": "午",
+    }
+
+    def taohua(self, day_zhi=None, year_zhi=None):
+        """
+        桃花/咸池 — 日支+年支双查
+
+        桃花主异性缘、人缘、艺术天赋，亦含情欲纠纷。
+        在时柱为墙外桃花，主晚年异性缘重。
+
+        Args:
+            day_zhi: 日支（默认使用实例 day_zhi）
+            year_zhi: 年支（默认使用实例 year_zhi）
+
+        Returns:
+            dict: {
+                "日支查": list[str],
+                "年支查": list[str],
+                "桃花地支": str,
+                "所在柱位": list[str],  # 日/时支为"墙内桃花"，年/月支为"墙外桃花"
+                "桃花类型": str,  # "墙内桃花"或"墙外桃花"或"无"
+            }
+        """
+        day_zhi = day_zhi or self.day_zhi
+        year_zhi = year_zhi or self.year_zhi
+
+        result = {"日支查": [], "年支查": [], "桃花地支": None, "所在柱位": [], "桃花类型": "无"}
+
+        # 日支查桃花位
+        taohua_zhi = self._TAOHUA.get(day_zhi)
+        if taohua_zhi:
+            result["桃花地支"] = taohua_zhi
+            for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                               ("日", self.day_zhi), ("时", self.hour_zhi)]:
+                if zhi == taohua_zhi:
+                    result["日支查"].append(f"{label}支/{zhi}")
+                    result["所在柱位"].append(label)
+
+        # 年支查（若与日支桃花不同位，也标记）
+        taohua_zhi_yr = self._TAOHUA.get(year_zhi)
+        if taohua_zhi_yr and taohua_zhi_yr != taohua_zhi:
+            for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                               ("日", self.day_zhi), ("时", self.hour_zhi)]:
+                if zhi == taohua_zhi_yr:
+                    result["年支查"].append(f"{label}支/{zhi}")
+                    if label not in result["所在柱位"]:
+                        result["所在柱位"].append(label)
+
+        # 判断桃花类型
+        if result["所在柱位"]:
+            if "日" in result["所在柱位"] or "时" in result["所在柱位"]:
+                result["桃花类型"] = "墙内桃花"
+            else:
+                result["桃花类型"] = "墙外桃花"
+
+        return result
+
+    # --- 羊刃 ---
+    # 阳干帝旺位为羊刃，阴干以墓库位论
+    # 口诀：甲刃在卯，丙戊刃在午，庚刃在酉，壬刃在子
+    # 阴干：乙刃在辰，丁己刃在未，辛刃在戌，癸刃在丑
+    _YANGREN = {
+        "甲": "卯", "丙": "午", "戊": "午", "庚": "酉", "壬": "子",
+        "乙": "辰", "丁": "未", "己": "未", "辛": "戌", "癸": "丑",
+    }
+
+    def yangren(self, day_gan=None):
+        """
+        羊刃 — 日干查地支
+
+        羊刃为旺极之刃，阳干帝旺位、阴干墓库位。
+        羊刃主性格刚强、果断，但易冲动、克父克妻。
+        有制化者可掌兵权、为将星。
+
+        Args:
+            day_gan: 日干（默认使用实例 day_gan）
+
+        Returns:
+            dict: {
+                "羊刃地支": str,
+                "天干阴阳": str,
+                "所在柱位": list[str] | None,
+                "有羊刃": bool,
+            }
+        """
+        day_gan = day_gan or self.day_gan
+        yangren_zhi = self._YANGREN.get(day_gan, "")
+
+        positions = []
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi == yangren_zhi:
+                positions.append(label)
+
+        gan_yy = TIANGAN_YINYANG.get(day_gan, "?")
+
+        return {
+            "羊刃地支": yangren_zhi,
+            "天干阴阳": gan_yy,
+            "所在柱位": positions or None,
+            "有羊刃": len(positions) > 0,
+            "备注": f"{day_gan}为{gan_yy}干，羊刃在{yangren_zhi}" + (
+                "（帝旺位）" if gan_yy == "阳" else "（墓库位）"
+            ),
+        }
+
+    # --- 驿马 ---
+    # 口诀：申子辰在寅，寅午戌在申，亥卯未在巳，巳酉丑在亥
+    _YIMA = {
+        "申": "寅", "子": "寅", "辰": "寅",
+        "寅": "申", "午": "申", "戌": "申",
+        "亥": "巳", "卯": "巳", "未": "巳",
+        "巳": "亥", "酉": "亥", "丑": "亥",
+    }
+
+    def yima(self, day_zhi=None, year_zhi=None):
+        """
+        驿马 — 日支+年支双查
+
+        驿马主动、奔波、迁移、出国。
+        命带驿马者一生多动，适合外出发展。
+        驿马逢冲则动得更急，逢合则动而有所牵制。
+
+        Args:
+            day_zhi: 日支（默认使用实例 day_zhi）
+            year_zhi: 年支（默认使用实例 year_zhi）
+
+        Returns:
+            dict: {
+                "日支查": list[str],
+                "年支查": list[str],
+                "驿马地支": str,
+                "所在柱位": list[str],
+            }
+        """
+        day_zhi = day_zhi or self.day_zhi
+        year_zhi = year_zhi or self.year_zhi
+
+        result = {"日支查": [], "年支查": [], "驿马地支": None, "所在柱位": []}
+
+        yima_zhi = self._YIMA.get(day_zhi)
+        if yima_zhi:
+            result["驿马地支"] = yima_zhi
+            for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                               ("日", self.day_zhi), ("时", self.hour_zhi)]:
+                if zhi == yima_zhi:
+                    result["日支查"].append(f"{label}支/{zhi}")
+                    result["所在柱位"].append(label)
+
+        yima_zhi_yr = self._YIMA.get(year_zhi)
+        if yima_zhi_yr and yima_zhi_yr != yima_zhi:
+            for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                               ("日", self.day_zhi), ("时", self.hour_zhi)]:
+                if zhi == yima_zhi_yr:
+                    result["年支查"].append(f"{label}支/{zhi}")
+                    if label not in result["所在柱位"]:
+                        result["所在柱位"].append(label)
+
+        return result
+
+    # --- 华盖 ---
+    # 口诀：申子辰见辰，寅午戌见戌，亥卯未见未，巳酉丑见丑
+    _HUAGAI = {
+        "申": "辰", "子": "辰", "辰": "辰",
+        "寅": "戌", "午": "戌", "戌": "戌",
+        "亥": "未", "卯": "未", "未": "未",
+        "巳": "丑", "酉": "丑", "丑": "丑",
+    }
+
+    def huagai(self, day_zhi=None):
+        """
+        华盖 — 日支查地支
+
+        华盖主孤独、清高、聪明、喜神秘文化。
+        命带华盖者对哲学、宗教、命理、艺术有天赋。
+        华盖过多则孤芳自赏，不利婚姻。
+
+        Args:
+            day_zhi: 日支（默认使用实例 day_zhi）
+
+        Returns:
+            dict: {
+                "华盖地支": str,
+                "所在柱位": list[str] | None,
+                "有华盖": bool,
+            }
+        """
+        day_zhi = day_zhi or self.day_zhi
+        huagai_zhi = self._HUAGAI.get(day_zhi, "")
+
+        positions = []
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi == huagai_zhi:
+                positions.append(label)
+
+        return {
+            "华盖地支": huagai_zhi,
+            "所在柱位": positions or None,
+            "有华盖": len(positions) > 0,
+        }
+
+    # --- 将星 ---
+    # 口诀：申子辰见子，寅午戌见午，亥卯未见卯，巳酉丑见酉
+    _JIANGXING = {
+        "申": "子", "子": "子", "辰": "子",
+        "寅": "午", "午": "午", "戌": "午",
+        "亥": "卯", "卯": "卯", "未": "卯",
+        "巳": "酉", "酉": "酉", "丑": "酉",
+    }
+
+    def jiangxing(self, day_zhi=None):
+        """
+        将星 — 日支查地支
+
+        将星主领导力、决断力、统御才能。
+        命带将星者适合管理岗位、军警、体育竞技。
+        将星配合吉神则权重威显，配合凶煞则暴戾。
+
+        Args:
+            day_zhi: 日支（默认使用实例 day_zhi）
+
+        Returns:
+            dict: {
+                "将星地支": str,
+                "所在柱位": list[str] | None,
+                "有将星": bool,
+            }
+        """
+        day_zhi = day_zhi or self.day_zhi
+        jiangxing_zhi = self._JIANGXING.get(day_zhi, "")
+
+        positions = []
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi == jiangxing_zhi:
+                positions.append(label)
+
+        return {
+            "将星地支": jiangxing_zhi,
+            "所在柱位": positions or None,
+            "有将星": len(positions) > 0,
+        }
+
+    # --- 孤辰寡宿 ---
+    # 孤辰：亥子丑见寅，寅卯辰见巳，巳午未见申，申酉戌见亥
+    # 寡宿：亥子丑见戌，寅卯辰见丑，巳午未见辰，申酉戌见未
+    _GUCHEN = {
+        "亥": "寅", "子": "寅", "丑": "寅",
+        "寅": "巳", "卯": "巳", "辰": "巳",
+        "巳": "申", "午": "申", "未": "申",
+        "申": "亥", "酉": "亥", "戌": "亥",
+    }
+    _GUASU = {
+        "亥": "戌", "子": "戌", "丑": "戌",
+        "寅": "丑", "卯": "丑", "辰": "丑",
+        "巳": "辰", "午": "辰", "未": "辰",
+        "申": "未", "酉": "未", "戌": "未",
+    }
+
+    def guchen_guasu(self, day_zhi=None):
+        """
+        孤辰寡宿 — 日支查地支
+
+        孤辰主孤僻、寡合、与六亲缘浅。
+        寡宿主孤独、配偶缘薄。
+        男怕孤辰，女怕寡宿，但配合华盖则利于修行学术。
+
+        Args:
+            day_zhi: 日支（默认使用实例 day_zhi）
+
+        Returns:
+            dict: {
+                "孤辰": {"地支": str, "所在柱位": list | None, "有孤辰": bool},
+                "寡宿": {"地支": str, "所在柱位": list | None, "有寡宿": bool},
+            }
+        """
+        day_zhi = day_zhi or self.day_zhi
+
+        guchen_zhi = self._GUCHEN.get(day_zhi, "")
+        guasu_zhi = self._GUASU.get(day_zhi, "")
+
+        gc_positions = []
+        gs_positions = []
+
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi == guchen_zhi:
+                gc_positions.append(label)
+            if zhi == guasu_zhi:
+                gs_positions.append(label)
+
+        return {
+            "孤辰": {
+                "地支": guchen_zhi,
+                "所在柱位": gc_positions or None,
+                "有孤辰": len(gc_positions) > 0,
+            },
+            "寡宿": {
+                "地支": guasu_zhi,
+                "所在柱位": gs_positions or None,
+                "有寡宿": len(gs_positions) > 0,
+            },
+        }
+
+    # --- 红鸾天喜 ---
+    # 红鸾：卯起子逆数
+    # 子→卯,丑→寅,寅→丑,卯→子,辰→亥,巳→戌,午→酉,未→申,
+    # 申→未,酉→午,戌→巳,亥→辰
+    _HONGLUAN = {
+        "子": "卯", "丑": "寅", "寅": "丑", "卯": "子",
+        "辰": "亥", "巳": "戌", "午": "酉", "未": "申",
+        "申": "未", "酉": "午", "戌": "巳", "亥": "辰",
+    }
+
+    def hongluan_tianxi(self, day_zhi=None):
+        """
+        红鸾天喜 — 日支查地支
+
+        红鸾主婚恋喜事、桃花正缘、喜庆之事。
+        天喜主添丁、升迁、吉庆。
+        红鸾天喜同现则婚期将近或家有喜事。
+
+        Args:
+            day_zhi: 日支（默认使用实例 day_zhi）
+
+        Returns:
+            dict: {
+                "红鸾": {"地支": str, "所在柱位": list | None, "有红鸾": bool},
+                "天喜": {"地支": str, "所在柱位": list | None, "有天喜": bool},
+            }
+        """
+        day_zhi = day_zhi or self.day_zhi
+
+        hongluan_zhi = self._HONGLUAN.get(day_zhi, "")
+        # 天喜 = 红鸾的对冲位（地支+6）
+        tianxi_zhi = ""
+        if hongluan_zhi:
+            hl_idx = DIZHI.index(hongluan_zhi)
+            tianxi_zhi = DIZHI[(hl_idx + 6) % 12]
+
+        hl_positions = []
+        tx_positions = []
+
+        for label, zhi in [("年", self.year_zhi), ("月", self.month_zhi),
+                           ("日", self.day_zhi), ("时", self.hour_zhi)]:
+            if zhi == hongluan_zhi:
+                hl_positions.append(label)
+            if tianxi_zhi and zhi == tianxi_zhi:
+                tx_positions.append(label)
+
+        return {
+            "红鸾": {
+                "地支": hongluan_zhi,
+                "所在柱位": hl_positions or None,
+                "有红鸾": len(hl_positions) > 0,
+            },
+            "天喜": {
+                "地支": tianxi_zhi,
+                "所在柱位": tx_positions or None,
+                "有天喜": len(tx_positions) > 0,
+            },
+        }
+
 
 # ============================================================
 # 纳音五行（六十甲子纳音表）
@@ -1051,22 +1454,90 @@ def _to_json(self, indent=2, ensure_ascii=False):
 
 def _get_shensha(self):
     """
-    神煞查询入口 — 返回四类吉神在四柱中的分布
+    神煞查询入口 — 返回11类神煞在四柱中的分布
+
+    吉神：天乙贵人、文昌贵人、太极贵人、学堂词馆、
+          华盖、将星、红鸾天喜
+    中性：驿马、桃花
+    凶煞：羊刃、孤辰寡宿
 
     Returns:
-        dict: {
-            "天乙贵人": tianyi_guiren() 返回值,
-            "文昌贵人": wenchang_xueren() 返回值,
-            "太极贵人": taiji_guiren() 返回值,
-            "学堂词馆": xuetang_ciguan() 返回值,
-        }
+        dict: 包含所有神煞的查询结果，每个神煞含所在柱位和吉凶标注
     """
     sc = ShenshaCalculator(self.data)
+
+    # 收集所有神煞
+    all_shensha = {
+        # --- 吉神 ---
+        "天乙贵人": {"data": sc.tianyi_guiren(), "吉凶": "吉", "含义": "遇难呈祥、贵人扶助"},
+        "文昌贵人": {"data": sc.wenchang_xueren(), "吉凶": "吉", "含义": "聪明好学、文采出众"},
+        "太极贵人": {"data": sc.taiji_guiren(), "吉凶": "吉", "含义": "聪明好学、有特殊才能"},
+        "学堂词馆": {"data": sc.xuetang_ciguan(), "吉凶": "吉", "含义": "学业有成、科甲功名"},
+        "华盖": {"data": sc.huagai(), "吉凶": "吉", "含义": "清高聪明、喜神秘文化"},
+        "将星": {"data": sc.jiangxing(), "吉凶": "吉", "含义": "领导力、决断力、统御才能"},
+        "红鸾天喜": {"data": sc.hongluan_tianxi(), "吉凶": "吉", "含义": "婚恋喜事、添丁升迁"},
+        # --- 中性 ---
+        "桃花": {"data": sc.taohua(), "吉凶": "中性", "含义": "异性缘、人缘、艺术天赋"},
+        "驿马": {"data": sc.yima(), "吉凶": "中性", "含义": "奔波、迁移、宜外出发展"},
+        # --- 凶煞 ---
+        "羊刃": {"data": sc.yangren(), "吉凶": "凶", "含义": "刚强果断、易冲动克亲"},
+        "孤辰寡宿": {"data": sc.guchen_guasu(), "吉凶": "凶", "含义": "孤僻寡合、六亲缘浅"},
+    }
+
+    # 汇总：统计哪些神煞确实出现在命局中
+    吉神命中 = []
+    中性命中 = []
+    凶煞命中 = []
+
+    for name, info in all_shensha.items():
+        d = info["data"]
+        present = False
+
+        # 根据返回结构判断是否存在
+        if isinstance(d, dict):
+            for key in d:
+                if isinstance(d[key], dict):
+                    # 嵌套结构如 "学堂"/"词馆"、"红鸾"/"天喜"
+                    if d[key].get("有学堂") or d[key].get("有词馆") or \
+                       d[key].get("有华盖") or d[key].get("有将星") or \
+                       d[key].get("有羊刃") or d[key].get("有孤辰") or \
+                       d[key].get("有寡宿") or d[key].get("有红鸾") or \
+                       d[key].get("有天喜"):
+                        present = True
+                        break
+                elif isinstance(d[key], list) and len(d[key]) > 0:
+                    present = True
+                    break
+                elif isinstance(d[key], dict) and d[key].get("所在柱位"):
+                    present = True
+                    break
+                elif isinstance(d[key], dict) and d[key].get("桃花类型") and d[key]["桃花类型"] != "无":
+                    present = True
+                    break
+            # 兼容简单结构
+            if d.get("所在柱位") or d.get("有文昌") or d.get("桃花类型", "无") != "无":
+                present = True
+            if d.get("日干查") and len(d.get("日干查", [])) > 0:
+                present = True
+            if d.get("年干查") and len(d.get("年干查", [])) > 0:
+                present = True
+
+        if present:
+            if info["吉凶"] == "吉":
+                吉神命中.append(name)
+            elif info["吉凶"] == "凶":
+                凶煞命中.append(name)
+            else:
+                中性命中.append(name)
+
     return {
-        "天乙贵人": sc.tianyi_guiren(),
-        "文昌贵人": sc.wenchang_xueren(),
-        "太极贵人": sc.taiji_guiren(),
-        "学堂词馆": sc.xuetang_ciguan(),
+        "详细": all_shensha,
+        "汇总": {
+            "吉神命中": 吉神命中,
+            "中性命中": 中性命中,
+            "凶煞命中": 凶煞命中,
+            "总计": len(吉神命中) + len(中性命中) + len(凶煞命中),
+        },
     }
 
 
