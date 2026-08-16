@@ -386,6 +386,124 @@ def test_to_dict_with_shensha():
     print("✅ test_to_dict_with_shensha: to_dict 包含完整11神煞数据")
 
 
+# ============================================================
+# v1.1.3 胎元 + 命宫 测试
+# ============================================================
+
+def test_taiyuan():
+    """测试：get_taiyuan() 胎元计算"""
+    calc = BaziCalculator()
+
+    # 胎元 = 月干顺推一位 + 月支顺推三位
+    assert calc.get_taiyuan("甲子") == "乙卯", "甲子月胎元应为乙卯"
+    assert calc.get_taiyuan("丙寅") == "丁巳", "丙寅月胎元应为丁巳"
+    assert calc.get_taiyuan("庚申") == "辛亥", "庚申月胎元应为辛亥"
+    # 边界：癸亥月 → 甲寅（天干地支均回环）
+    assert calc.get_taiyuan("癸亥") == "甲寅", "癸亥月胎元应为甲寅"
+
+    print("✅ test_taiyuan: 胎元计算正确（月干+1、月支+3）")
+
+
+def test_minggong():
+    """测试：get_minggong() 命宫计算（月支起子时逆数至生时）"""
+    calc = BaziCalculator()
+
+    # 甲子月甲子时 → 命宫在子
+    assert calc.get_minggong("甲子", "甲子") == "子", "子月子时命宫应为子"
+    # 丙寅月甲午时 → 命宫在申
+    assert calc.get_minggong("丙寅", "甲午") == "申", "寅月午时命宫应为申"
+    # 子月丑时 → 命宫在亥（逆数一位）
+    assert calc.get_minggong("甲子", "乙丑") == "亥", "子月丑时命宫应为亥"
+
+    print("✅ test_minggong: 命宫计算正确（月支起子逆数至生时）")
+
+
+def test_calculate_sizhu_with_taiyuan_minggong():
+    """测试：扩展排盘包含胎元/命宫及纳音"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+
+    # 字段存在性
+    assert "taiyuan" in sz, "缺少 taiyuan"
+    assert "minggong" in sz, "缺少 minggong"
+    assert "taiyuan_nayin" in sz, "缺少 taiyuan_nayin"
+    assert "minggong_nayin" in sz, "缺少 minggong_nayin"
+
+    # 干支格式（2字符）
+    assert len(sz["taiyuan"]) == 2
+    assert len(sz["minggong"]) == 2
+
+    # 1990-06-15 12时 男: 月柱癸未 → 胎元甲戌；命宫丁丑
+    assert sz["taiyuan"] == "甲戌", f"月柱癸未胎元应为甲戌，实际 {sz['taiyuan']}"
+    assert sz["minggong"] == "丁丑", f"命宫应为丁丑，实际 {sz['minggong']}"
+
+    # 纳音
+    assert sz["taiyuan_nayin"]["nayin"] == "山头火"
+    assert sz["minggong_nayin"]["nayin"] == "涧下水"
+
+    print(f"✅ test_calculate_sizhu_with_taiyuan_minggong: 排盘含胎元命宫")
+    print(f"   胎元: {sz['taiyuan']} ({sz['taiyuan_nayin']['nayin']})")
+    print(f"   命宫: {sz['minggong']} ({sz['minggong_nayin']['nayin']})")
+
+
+def test_to_dict_with_taiyuan_minggong():
+    """测试：to_dict() 包含胎元/命宫字段（干支/藏干/纳音/十神）"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+
+    result = az.to_dict()
+    mp = result["命盘总览"]
+
+    # 命盘总览含胎元/命宫
+    assert "胎元" in mp, "命盘总览缺少胎元"
+    assert "命宫" in mp, "命盘总览缺少命宫"
+
+    for name in ["胎元", "命宫"]:
+        fu = mp[name]
+        for key in ["干支", "天干", "地支", "五行", "阴阳", "藏干", "纳音", "十神"]:
+            assert key in fu, f"{name} 缺少 {key}"
+        assert fu["干支"], f"{name} 干支为空"
+        assert fu["纳音"].get("nayin"), f"{name} 纳音为空"
+        assert isinstance(fu["藏干"], list) and len(fu["藏干"]) > 0, f"{name} 藏干为空"
+        assert fu["十神"], f"{name} 十神为空"
+
+    # 十神分析含胎元/命宫
+    tg = result["十神分析"]["天干十神"]
+    assert "胎元干" in tg
+    assert "命宫干" in tg
+    dg = result["十神分析"]["地支藏干十神"]
+    assert "胎元支" in dg
+    assert "命宫支" in dg
+
+    # 1990-06-15 日主辛，胎元干甲为正财、命宫干丁为七杀
+    assert tg["胎元干"] == "正财", f"胎元干甲应为正财，实际 {tg['胎元干']}"
+    assert tg["命宫干"] == "七杀", f"命宫干丁应为七杀，实际 {tg['命宫干']}"
+
+    print("✅ test_to_dict_with_taiyuan_minggong: to_dict 包含胎元命宫完整信息")
+
+
+def test_taiyuan_minggong_backward_compat():
+    """测试：旧数据（无胎元/命宫）to_dict 不崩溃"""
+    old_data = {
+        "year": "庚午",
+        "month": "壬午",
+        "day": "辛亥",
+        "hour": "甲午",
+        "yuejian": "午",
+        "dayun": [],
+        "dayun_direction": "顺排",
+    }
+    az = BaziAnalyzer(old_data)
+    result = az.to_dict()
+
+    mp = result["命盘总览"]
+    assert mp["胎元"]["干支"] == ""
+    assert mp["命宫"]["干支"] == ""
+
+    print("✅ test_taiyuan_minggong_backward_compat: 旧数据兼容正常")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("bazi_engine.py 单元测试 — v1.1.0 新增功能")
@@ -412,6 +530,12 @@ if __name__ == "__main__":
         test_xuetang_ciguan,
         test_get_shensha_integration,
         test_to_dict_with_shensha,
+        # v1.1.3 胎元 + 命宫
+        test_taiyuan,
+        test_minggong,
+        test_calculate_sizhu_with_taiyuan_minggong,
+        test_to_dict_with_taiyuan_minggong,
+        test_taiyuan_minggong_backward_compat,
     ]
 
     passed = 0

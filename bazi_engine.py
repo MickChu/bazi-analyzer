@@ -202,6 +202,44 @@ class BaziCalculator:
         else:
             return _YUEJIAN_BEFORE[month]
 
+    # --- 胎元 ---
+    def get_taiyuan(self, month_ganzhi):
+        """
+        计算胎元（受胎月份的干支）
+
+        依据：《渊海子平》胎元起法
+        胎元 = 月干顺推一位 + 月支顺推三位
+        例：月柱甲子 → 胎元乙卯（甲+1=乙，子+3=卯）
+
+        Args:
+            month_ganzhi: 月柱干支（如 '甲子'），2字符
+
+        Returns:
+            str: 胎元干支（如 '乙卯'）
+        """
+        gan_idx = TIANGAN.index(month_ganzhi[0])
+        zhi_idx = DIZHI.index(month_ganzhi[1])
+        return TIANGAN[(gan_idx + 1) % 10] + DIZHI[(zhi_idx + 3) % 12]
+
+    # --- 命宫 ---
+    def get_minggong(self, month_ganzhi, hour_ganzhi):
+        """
+        计算命宫地支
+
+        依据：《渊海子平》《三命通会》命宫起法
+        命宫 = 以月支起子时，逆数至生时，所至之支即命宫
+
+        Args:
+            month_ganzhi: 月柱干支（如 '甲子'）
+            hour_ganzhi: 时柱干支（如 '丙子'）
+
+        Returns:
+            str: 命宫地支（如 '子'）
+        """
+        month_idx = DIZHI.index(month_ganzhi[1])
+        hour_idx = DIZHI.index(hour_ganzhi[1])
+        return DIZHI[(month_idx - hour_idx) % 12]
+
     # --- 大运 ---
     def calculate_dayun(self, year_gan, month_gan, month_zhi, gender, birth_year, count=8):
         """
@@ -1316,12 +1354,48 @@ def _calculate_sizhu_extended(self, year, month, day, hour, gender):
     # 空亡：以日柱为基准
     result["xunkong"] = _get_xunkong(self, result["day"])
 
+    # 胎元：月干顺推一位 + 月支顺推三位
+    taiyuan_gz = self.get_taiyuan(result["month"])
+    result["taiyuan"] = taiyuan_gz
+    result["taiyuan_nayin"] = _get_nayin(self, taiyuan_gz)
+
+    # 命宫：月支起子时逆数至生时，天干用五虎遁（年上起月）
+    minggong_zhi = self.get_minggong(result["month"], result["hour"])
+    minggong_gz = self.get_month_ganzhi(result["year"][0], minggong_zhi)
+    result["minggong"] = minggong_gz
+    result["minggong_nayin"] = _get_nayin(self, minggong_gz)
+
     return result
 
 
 # ============================================================
 # BaziAnalyzer 扩展方法
 # ============================================================
+
+def _build_fu_zhu(self, ganzhi, nayin_key):
+    """
+    构建胎元/命宫等辅助柱的结构化字典
+
+    Args:
+        ganzhi: 干支字符串（如 '乙卯'），可为空字符串
+        nayin_key: 纳音字段名（如 'taiyuan_nayin'）
+
+    Returns:
+        dict: {干支, 天干, 地支, 五行, 阴阳, 藏干, 纳音, 十神}
+    """
+    gan = ganzhi[0] if ganzhi else ""
+    zhi = ganzhi[1] if ganzhi else ""
+    return {
+        "干支": ganzhi,
+        "天干": gan,
+        "地支": zhi,
+        "五行": TIANGAN_WUXING.get(gan, "?") if gan else "?",
+        "阴阳": TIANGAN_YINYANG.get(gan, "?") if gan else "?",
+        "藏干": DIZHI_CANGGAN.get(zhi, []) if zhi else [],
+        "纳音": self.data.get(nayin_key, {}),
+        "十神": get_shishen(self.day_gan, gan) if gan else "",
+    }
+
 
 def _to_dict(self):
     """
@@ -1377,6 +1451,8 @@ def _to_dict(self):
             },
             "月令": self.data.get("yuejian", ""),
             "空亡": self.data.get("xunkong", []),
+            "胎元": _build_fu_zhu(self, self.data.get("taiyuan", ""), "taiyuan_nayin"),
+            "命宫": _build_fu_zhu(self, self.data.get("minggong", ""), "minggong_nayin"),
         },
         "十神分析": {
             "天干十神": {},
@@ -1414,8 +1490,24 @@ def _to_dict(self):
             else:
                 result["十神分析"]["天干十神"][label] = get_shishen(self.day_gan, gan)
 
+    # 胎元/命宫 天干十神
+    for label, key in [("胎元干", "taiyuan"), ("命宫干", "minggong")]:
+        if self.data.get(key):
+            gan = self.data[key][0]
+            result["十神分析"]["天干十神"][label] = get_shishen(self.day_gan, gan)
+
     # 填充地支藏干十神
     for label, key in [("年支", "year"), ("月支", "month"), ("日支", "day"), ("时支", "hour")]:
+        if self.data.get(key):
+            zhi = self.data[key][1]
+            canggan_list = []
+            for cg in DIZHI_CANGGAN.get(zhi, []):
+                ss = get_shishen(self.day_gan, cg)
+                canggan_list.append(f"{cg}({ss})")
+            result["十神分析"]["地支藏干十神"][label] = canggan_list
+
+    # 胎元/命宫 地支藏干十神
+    for label, key in [("胎元支", "taiyuan"), ("命宫支", "minggong")]:
         if self.data.get(key):
             zhi = self.data[key][1]
             canggan_list = []
