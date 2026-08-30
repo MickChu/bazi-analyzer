@@ -504,6 +504,142 @@ def test_taiyuan_minggong_backward_compat():
     print("✅ test_taiyuan_minggong_backward_compat: 旧数据兼容正常")
 
 
+# ============================================================
+# v1.1.4 身宫 + 五行力量加权量化评分 测试
+# ============================================================
+
+def test_shengong():
+    """测试：get_shengong() 身宫计算（月支起子时顺数至生时）"""
+    calc = BaziCalculator()
+
+    # 子月子时 → 身宫在子
+    assert calc.get_shengong("甲子", "甲子") == "子", "子月子时身宫应为子"
+    # 子月丑时 → 身宫在丑（顺数一位）
+    assert calc.get_shengong("甲子", "乙丑") == "丑", "子月丑时身宫应为丑"
+    # 寅月午时 → 身宫在申（寅+午顺数）
+    assert calc.get_shengong("丙寅", "甲午") == "申", "寅月午时身宫应为申"
+    # 与命宫对照：子月丑时命宫在亥（逆数）、身宫在丑（顺数）
+    assert calc.get_minggong("甲子", "乙丑") == "亥", "子月丑时命宫应为亥"
+
+    print("✅ test_shengong: 身宫计算正确（月支起子顺数至生时）")
+
+
+def test_calculate_sizhu_with_shengong():
+    """测试：扩展排盘包含身宫及纳音"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+
+    assert "shengong" in sz, "缺少 shengong"
+    assert "shengong_nayin" in sz, "缺少 shengong_nayin"
+    assert len(sz["shengong"]) == 2
+
+    # 1990-06-15 12时 男: 月柱癸未、时柱甲午 → 身宫丁丑
+    assert sz["shengong"] == "丁丑", f"身宫应为丁丑，实际 {sz['shengong']}"
+    assert sz["shengong_nayin"]["nayin"] == "涧下水"
+
+    print(f"✅ test_calculate_sizhu_with_shengong: 排盘含身宫")
+    print(f"   身宫: {sz['shengong']} ({sz['shengong_nayin']['nayin']})")
+
+
+def test_to_dict_with_shengong():
+    """测试：to_dict() 包含身宫字段（干支/藏干/纳音/十神）"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+
+    result = az.to_dict()
+    mp = result["命盘总览"]
+    assert "身宫" in mp, "命盘总览缺少身宫"
+
+    sg = mp["身宫"]
+    for key in ["干支", "天干", "地支", "五行", "阴阳", "藏干", "纳音", "十神"]:
+        assert key in sg, f"身宫缺少 {key}"
+    assert sg["干支"] == "丁丑"
+    assert sg["纳音"]["nayin"] == "涧下水"
+    assert isinstance(sg["藏干"], list) and len(sg["藏干"]) > 0
+    assert sg["十神"]
+
+    # 十神分析含身宫
+    tg = result["十神分析"]["天干十神"]
+    assert "身宫干" in tg
+    assert tg["身宫干"] == "七杀", f"身宫干丁应为七杀，实际 {tg['身宫干']}"
+    dg = result["十神分析"]["地支藏干十神"]
+    assert "身宫支" in dg
+
+    print("✅ test_to_dict_with_shengong: to_dict 包含身宫完整信息")
+
+
+def test_get_wuxing_score():
+    """测试：get_wuxing_score() 五行力量加权量化评分"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+
+    result = az.get_wuxing_score()
+    for key in ["得分", "占比", "最强五行", "最弱五行", "明细"]:
+        assert key in result, f"缺少 {key}"
+
+    score = result["得分"]
+    for wx in ["金", "木", "水", "火", "土"]:
+        assert wx in score, f"缺少 {wx}"
+
+    # 1990-06-15 庚午 癸未 辛未 甲午：土最旺、水最弱
+    assert abs(score["土"] - 4.7) < 0.01, f"土得分应为4.7，实际 {score['土']}"
+    assert abs(score["火"] - 3.2) < 0.01, f"火得分应为3.2，实际 {score['火']}"
+    assert abs(score["金"] - 2.0) < 0.01, f"金得分应为2.0，实际 {score['金']}"
+    assert abs(score["木"] - 1.6) < 0.01, f"木得分应为1.6，实际 {score['木']}"
+    assert abs(score["水"] - 1.0) < 0.01, f"水得分应为1.0，实际 {score['水']}"
+    assert result["最强五行"] == "土"
+    assert result["最弱五行"] == "水"
+
+    # 占比总和约 100
+    assert abs(sum(result["占比"].values()) - 100.0) < 1.0
+
+    print("✅ test_get_wuxing_score: 五行加权得分正确")
+    print(f"   得分: {score}")
+    print(f"   最强: {result['最强五行']}, 最弱: {result['最弱五行']}")
+
+
+def test_wuxing_score_weight_rules():
+    """测试：五行加权规则（天干1、本气1、中气0.6、余气0.3、月令1.5）"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+    result = az.get_wuxing_score()
+    details = result["明细"]
+
+    # 明细总数：4天干 + 10藏干 + 1月令 = 15
+    assert len(details) == 15, f"明细应为15条，实际 {len(details)}"
+    assert any("+1.0" in d for d in details), "缺少本气权重1.0"
+    assert any("+0.6" in d for d in details), "缺少中气权重0.6"
+    assert any("+0.3" in d for d in details), "缺少余气权重0.3"
+    assert any("+1.5" in d for d in details), "缺少月令权重1.5"
+    assert any("月令" in d for d in details), "缺少月令加成明细"
+
+    print("✅ test_wuxing_score_weight_rules: 加权规则正确（1/0.6/0.3/1.5）")
+
+
+def test_shengong_wuxing_backward_compat():
+    """测试：旧数据（无身宫）to_dict 不崩溃且加权得分正常"""
+    old_data = {
+        "year": "庚午",
+        "month": "壬午",
+        "day": "辛亥",
+        "hour": "甲午",
+        "yuejian": "午",
+        "dayun": [],
+        "dayun_direction": "顺排",
+    }
+    az = BaziAnalyzer(old_data)
+    result = az.to_dict()
+
+    assert result["命盘总览"]["身宫"]["干支"] == ""
+    assert "加权得分" in result["五行力量"]
+    assert "得分" in result["五行力量"]["加权得分"]
+
+    print("✅ test_shengong_wuxing_backward_compat: 旧数据兼容正常")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("bazi_engine.py 单元测试 — v1.1.0 新增功能")
@@ -536,6 +672,13 @@ if __name__ == "__main__":
         test_calculate_sizhu_with_taiyuan_minggong,
         test_to_dict_with_taiyuan_minggong,
         test_taiyuan_minggong_backward_compat,
+        # v1.1.4 身宫 + 五行力量加权评分
+        test_shengong,
+        test_calculate_sizhu_with_shengong,
+        test_to_dict_with_shengong,
+        test_get_wuxing_score,
+        test_wuxing_score_weight_rules,
+        test_shengong_wuxing_backward_compat,
     ]
 
     passed = 0

@@ -240,6 +240,26 @@ class BaziCalculator:
         hour_idx = DIZHI.index(hour_ganzhi[1])
         return DIZHI[(month_idx - hour_idx) % 12]
 
+    # --- 身宫 ---
+    def get_shengong(self, month_ganzhi, hour_ganzhi):
+        """
+        计算身宫地支
+
+        依据：《三命通会》身宫起法
+        身宫 = 以月支起子时，顺数至生时，所至之支即身宫
+        （与命宫相对：命宫逆数、身宫顺数）
+
+        Args:
+            month_ganzhi: 月柱干支（如 '甲子'）
+            hour_ganzhi: 时柱干支（如 '丙子'）
+
+        Returns:
+            str: 身宫地支（如 '子'）
+        """
+        month_idx = DIZHI.index(month_ganzhi[1])
+        hour_idx = DIZHI.index(hour_ganzhi[1])
+        return DIZHI[(month_idx + hour_idx) % 12]
+
     # --- 大运 ---
     def calculate_dayun(self, year_gan, month_gan, month_zhi, gender, birth_year, count=8):
         """
@@ -1365,6 +1385,12 @@ def _calculate_sizhu_extended(self, year, month, day, hour, gender):
     result["minggong"] = minggong_gz
     result["minggong_nayin"] = _get_nayin(self, minggong_gz)
 
+    # 身宫：月支起子时顺数至生时，天干用五虎遁（年上起月）
+    shengong_zhi = self.get_shengong(result["month"], result["hour"])
+    shengong_gz = self.get_month_ganzhi(result["year"][0], shengong_zhi)
+    result["shengong"] = shengong_gz
+    result["shengong_nayin"] = _get_nayin(self, shengong_gz)
+
     return result
 
 
@@ -1453,6 +1479,7 @@ def _to_dict(self):
             "空亡": self.data.get("xunkong", []),
             "胎元": _build_fu_zhu(self, self.data.get("taiyuan", ""), "taiyuan_nayin"),
             "命宫": _build_fu_zhu(self, self.data.get("minggong", ""), "minggong_nayin"),
+            "身宫": _build_fu_zhu(self, self.data.get("shengong", ""), "shengong_nayin"),
         },
         "十神分析": {
             "天干十神": {},
@@ -1463,6 +1490,7 @@ def _to_dict(self):
             "天干": {},
             "地支": {},
             "分布统计": self.get_wuxing_distribution(),
+            "加权得分": self.get_wuxing_score(),
         },
         "旺衰分析": {
             "日主": f"{self.day_gan}({TIANGAN_WUXING.get(self.day_gan, '?')})",
@@ -1490,8 +1518,8 @@ def _to_dict(self):
             else:
                 result["十神分析"]["天干十神"][label] = get_shishen(self.day_gan, gan)
 
-    # 胎元/命宫 天干十神
-    for label, key in [("胎元干", "taiyuan"), ("命宫干", "minggong")]:
+    # 胎元/命宫/身宫 天干十神
+    for label, key in [("胎元干", "taiyuan"), ("命宫干", "minggong"), ("身宫干", "shengong")]:
         if self.data.get(key):
             gan = self.data[key][0]
             result["十神分析"]["天干十神"][label] = get_shishen(self.day_gan, gan)
@@ -1506,8 +1534,8 @@ def _to_dict(self):
                 canggan_list.append(f"{cg}({ss})")
             result["十神分析"]["地支藏干十神"][label] = canggan_list
 
-    # 胎元/命宫 地支藏干十神
-    for label, key in [("胎元支", "taiyuan"), ("命宫支", "minggong")]:
+    # 胎元/命宫/身宫 地支藏干十神
+    for label, key in [("胎元支", "taiyuan"), ("命宫支", "minggong"), ("身宫支", "shengong")]:
         if self.data.get(key):
             zhi = self.data[key][1]
             canggan_list = []
@@ -1538,6 +1566,89 @@ def _to_json(self, indent=2, ensure_ascii=False):
         str: JSON 字符串
     """
     return _json.dumps(_to_dict(self), indent=indent, ensure_ascii=ensure_ascii)
+
+
+def _get_wuxing_score(self):
+    """
+    五行力量加权量化评分
+
+    依据：子平命理"得令最重、得地次之、得势再次"的旺衰法则，
+    对天干、地支藏干、月令分别赋予权重，量化五行力量对比。
+
+    权重规则：
+        - 天干 ×1.0（四柱各天干各计1）
+        - 地支本气 ×1.0（每支第一藏干）
+        - 地支中气 ×0.6（每支第二藏干）
+        - 地支余气 ×0.3（每支第三藏干）
+        - 月令 ×1.5（月支本气五行额外加成，得令最重）
+
+    Returns:
+        dict: {
+            "得分": {"金": x, "木": x, "水": x, "火": x, "土": x},
+            "占比": {"金": p, ...},   # 百分比(0-100，保留1位小数)
+            "最强五行": "土",
+            "最弱五行": "木",
+            "明细": [...],             # 加权明细列表
+        }
+    """
+    weights = {"金": 0.0, "木": 0.0, "水": 0.0, "火": 0.0, "土": 0.0}
+    details = []
+
+    # 藏干权重：本气/中气/余气
+    canggan_weight = [1.0, 0.6, 0.3]
+
+    # 1. 天干 ×1.0
+    for label, key in [("年干", "year"), ("月干", "month"),
+                       ("日干", "day"), ("时干", "hour")]:
+        if self.data.get(key):
+            gan = self.data[key][0]
+            wx = TIANGAN_WUXING.get(gan)
+            if wx:
+                weights[wx] += 1.0
+                details.append(f"天干{label}{gan}({wx}) +1.0")
+
+    # 2. 地支藏干（本气1.0、中气0.6、余气0.3）
+    for label, key in [("年支", "year"), ("月支", "month"),
+                       ("日支", "day"), ("时支", "hour")]:
+        if self.data.get(key):
+            zhi = self.data[key][1]
+            for i, cg in enumerate(DIZHI_CANGGAN.get(zhi, [])):
+                w = canggan_weight[i] if i < len(canggan_weight) else 0.3
+                wx = TIANGAN_WUXING.get(cg)
+                if wx:
+                    weights[wx] += w
+                    details.append(f"地支{label}{zhi}藏干{cg}({wx}) +{w}")
+
+    # 3. 月令 ×1.5（月支本气五行额外加成）
+    yuejian = self.data.get("yuejian", "")
+    if yuejian and DIZHI_CANGGAN.get(yuejian):
+        benqi = DIZHI_CANGGAN[yuejian][0]
+        wx = TIANGAN_WUXING.get(benqi)
+        if wx:
+            weights[wx] += 1.5
+            details.append(f"月令{yuejian}本气{benqi}({wx}) +1.5")
+
+    # 汇总：得分（保留1位）、占比、最强/最弱
+    total = sum(weights.values())
+    score = {wx: round(v, 1) for wx, v in weights.items()}
+    ratio = {wx: round(v / total * 100, 1) if total > 0 else 0.0
+             for wx, v in weights.items()}
+
+    if total > 0:
+        sorted_wx = sorted(weights.items(), key=lambda kv: kv[1], reverse=True)
+        strongest = sorted_wx[0][0]
+        weakest = sorted_wx[-1][0]
+    else:
+        strongest = "无"
+        weakest = "无"
+
+    return {
+        "得分": score,
+        "占比": ratio,
+        "最强五行": strongest,
+        "最弱五行": weakest,
+        "明细": details,
+    }
 
 
 # ============================================================
@@ -1640,3 +1751,4 @@ BaziCalculator.calculate_sizhu = _calculate_sizhu_extended
 BaziAnalyzer.to_dict = _to_dict
 BaziAnalyzer.to_json = _to_json
 BaziAnalyzer.get_shensha = _get_shensha
+BaziAnalyzer.get_wuxing_score = _get_wuxing_score
