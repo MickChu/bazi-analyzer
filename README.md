@@ -7,11 +7,12 @@
 `
 bazi_analyzer_offline.py  # CLI 交互界面（直接运行）
 bazi_engine.py            # 核心规则引擎（可被其他程序 import）
+excel_report.py           # Excel 报告生成器（独立运行，依赖 openpyxl）
 `
 
 ## 安装依赖
 
-项目无外部依赖，纯 Python 3 标准库实现。
+项目核心引擎无外部依赖，纯 Python 3 标准库实现。Excel 报告功能需额外安装 openpyxl：
 
 `ash
 # 任意 Python 3 环境即可运行

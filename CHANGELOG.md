@@ -4,6 +4,27 @@
 
 ---
 
+## v1.2.0 — Excel 报告框架 (2026-09-14)
+
+### 新增
+
+- **`excel_report.py`** — 独立可运行的 Excel 报告生成模块
+  - 引入 `openpyxl`（本项目唯一外部依赖，`pip install openpyxl`）
+  - 样式系统：标题/副标题/正文字体、表头底色、隔行浅底、细边框、居中对齐（传统朱砂红主题色）
+  - **Sheet 1「命盘总览」**：
+    - 基本信息区：出生时间、四柱、月令、空亡、大运方向
+    - 四柱详表：柱位 / 天干 / 地支 / 藏干 / 纳音 / 空亡 / 十神（日柱行加粗突出日主）
+- **`generate_report(sizhu_data, output_path)`** — 入口函数，接受 `calculate_sizhu()` 返回值，生成 .xlsx
+- **CLI 独立运行** — `python excel_report.py --year 1990 --month 6 --day 15 --hour 12 --gender 男`
+  - 支持 `--output` 自定义输出路径，默认自动命名 `bazi_report_YYYY-MM-DD.xlsx`
+
+### 依据
+
+- 《渊海子平》《三命通会》排盘体系
+- 数据复用 `bazi_engine.py` 的 `to_dict()` 结构化输出，保证 CLI/GUI/Excel 三端一致
+
+---
+
 ## v1.1.4 — 身宫 + 五行力量加权量化评分 (2026-08-31)
 
 ### 新增

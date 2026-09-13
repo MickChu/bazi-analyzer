@@ -11,7 +11,7 @@
 | v1.1.2 | 第5周 | ✅ 已完成 | bazi_engine.py | 神煞系统(下)：桃花(咸池)、羊刃、驿马、华盖、将星、孤辰、寡宿、红鸾天喜 |
 | v1.1.3 | 第7周 | ✅ 已完成 | bazi_engine.py | 胎元 + 命宫计算（含天干地支、纳音、十神） |
 | v1.1.4 | 第9周 | ✅ 已完成 | bazi_engine.py | 身宫计算 + 五行力量加权量化评分 |
-| v1.2.0 | 第11周 | ⬜ 待开始 | excel_report.py | 框架搭建 + 样式系统；Sheet 1：命盘总览 |
+| v1.2.0 | 第11周 | ✅ 已完成 | excel_report.py | 框架搭建 + 样式系统；Sheet 1：命盘总览 |
 | v1.2.1 | 第13周 | ⬜ 待开始 | excel_report.py | Sheet 2-3：十神分析（天干+藏干） + 五行力量含量化得分 |
 | v1.2.2 | 第15周 | ⬜ 待开始 | excel_report.py | Sheet 4-5：格局分析（含喜用神） + 神煞系统 |
 | v1.2.3 | 第17周 | ⬜ 待开始 | excel_report.py | Sheet 6-7：胎元命宫身宫 + 大运流年；图表可视化 |
@@ -84,11 +84,11 @@
 ### v1.2.0 — Excel 报告框架
 **文件：** `excel_report.py`（独立可运行）
 
-- [ ] `openpyxl` 依赖声明（唯一外部依赖）
-- [ ] 样式系统：标题字体/副标题字体/正文字体/边框/对齐/颜色
-- [ ] Sheet 1：命盘总览 — 四柱表格（天干/地支/藏干/纳音/空亡/十神）
-- [ ] `generate_report(sizhu_data, output_path)` 入口函数
-- [ ] CLI 独立运行：`python excel_report.py --year 1990 --month 6 --day 15 --hour 12 --gender 男`
+- [x] `openpyxl` 依赖声明（唯一外部依赖）
+- [x] 样式系统：标题字体/副标题字体/正文字体/边框/对齐/颜色
+- [x] Sheet 1：命盘总览 — 四柱表格（天干/地支/藏干/纳音/空亡/十神）
+- [x] `generate_report(sizhu_data, output_path)` 入口函数
+- [x] CLI 独立运行：`python excel_report.py --year 1990 --month 6 --day 15 --hour 12 --gender 男`
 
 ### v1.2.1 — Excel Sheet 2-3
 **文件：** `excel_report.py`
