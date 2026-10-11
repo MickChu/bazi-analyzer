@@ -410,6 +410,194 @@ def _build_sheet3(wb, data):
 
 
 # ============================================================
+# Sheet 4 / Sheet 5 数据构建
+# ============================================================
+
+def _wangshuai_rows(data):
+    """身强身弱判断表数据：[(项目, 内容, 说明), ...]"""
+    wang = data["旺衰分析"]
+    return [
+        ["日主", wang.get("日主", "—"), "五行归属"],
+        ["旺衰评分", wang.get("评分", 0), "得令30 + 得地 + 得势"],
+        ["旺衰结果", wang.get("结果", "—"), "身强 / 中和 / 身弱"],
+        ["评分明细", "；".join(wang.get("详细", [])), "逐项加减分说明"],
+    ]
+
+
+def _geju_rows(data):
+    """格局判定表数据：[(序号, 格局断语), ...]"""
+    geju = data["格局分析"]["格局"]
+    return [[i, g] for i, g in enumerate(geju, start=1)]
+
+
+def _xiyong_rows(data):
+    """喜用神/忌神表数据：[(项目, 五行, 说明), ...]"""
+    geju = data["格局分析"]
+    return [
+        ["喜用神", "、".join(geju["喜用神"]), "宜亲近、借助的五行"],
+        ["忌神", "、".join(geju["忌神"]), "宜回避、克制的五行"],
+        ["取用策略", geju.get("策略", "—"), "旺衰扶抑总原则"],
+    ]
+
+
+def _shensha_rows(data):
+    """
+    神煞系统表数据：[(名称, 吉凶, 所在地支, 命中柱位, 含义), ...]
+
+    遍历 to_dict() 中「神煞.详细」的 11 类神煞，
+    统一提取每类神煞的命中柱位与实际所在地支，
+    按 吉 → 中性 → 凶 顺序输出（与引擎返回顺序一致）。
+    """
+    mp = data["命盘总览"]
+    zhi_map = {
+        "年": mp["年柱"]["地支"],
+        "月": mp["月柱"]["地支"],
+        "日": mp["日柱"]["地支"],
+        "时": mp["时柱"]["地支"],
+    }
+    _PILLAR_ORDER = {"年": 0, "月": 1, "日": 2, "时": 3}
+
+    def _norm_pos(positions):
+        """柱位标签列表 → 去重并按年/月/日/时排序"""
+        return sorted(set(positions or []), key=lambda p: _PILLAR_ORDER.get(p, 99))
+
+    def _fmt_zhi(positions):
+        """柱位标签列表 → 所在地支字符串（去重保序）"""
+        seen = []
+        for p in _norm_pos(positions):
+            z = zhi_map.get(p)
+            if z and z not in seen:
+                seen.append(z)
+        return "、".join(seen) if seen else "—"
+
+    def _fmt_pos(positions):
+        """柱位标签列表 → 命中柱位字符串"""
+        pos = _norm_pos(positions)
+        return "、".join(f"{p}柱" for p in pos) if pos else "—"
+
+    details = data["神煞"]["详细"]
+    rows = []
+
+    for name, info in details.items():
+        d = info["data"]
+        jixiong = info["吉凶"]
+        hanyi = info["含义"]
+        pos = []
+        hit = False
+
+        if name == "天乙贵人":
+            pos = d.get("所在柱位", [])
+            hit = bool(pos)
+        elif name == "文昌贵人":
+            pos = d.get("所在柱位") or []
+            hit = d.get("有文昌", False)
+        elif name == "太极贵人":
+            pos = d.get("所在柱位", [])
+            hit = bool(pos)
+        elif name == "学堂词馆":
+            pos = []
+            for sub in (d.get("学堂", {}), d.get("词馆", {})):
+                pos.extend(sub.get("所在柱位") or [])
+            hit = bool(pos)
+        elif name == "华盖":
+            pos = d.get("所在柱位") or []
+            hit = d.get("有华盖", False)
+        elif name == "将星":
+            pos = d.get("所在柱位") or []
+            hit = d.get("有将星", False)
+        elif name == "红鸾天喜":
+            pos = []
+            for sub in (d.get("红鸾", {}), d.get("天喜", {})):
+                pos.extend(sub.get("所在柱位") or [])
+            hit = bool(pos)
+        elif name == "桃花":
+            pos = d.get("所在柱位", [])
+            hit = d.get("桃花类型", "无") != "无"
+        elif name == "驿马":
+            pos = d.get("所在柱位", [])
+            hit = bool(pos)
+        elif name == "羊刃":
+            pos = d.get("所在柱位") or []
+            hit = d.get("有羊刃", False)
+        elif name == "孤辰寡宿":
+            pos = []
+            for sub in (d.get("孤辰", {}), d.get("寡宿", {})):
+                pos.extend(sub.get("所在柱位") or [])
+            hit = bool(pos)
+
+        rows.append([
+            name, jixiong,
+            _fmt_zhi(pos) if hit else "—",
+            _fmt_pos(pos),
+            hanyi,
+        ])
+
+    return rows
+
+
+def _build_sheet4(wb, data):
+    """Sheet 4：格局分析 — 身强身弱判断 + 格局判定 + 喜用神忌神"""
+    ws = wb.create_sheet("格局分析")
+    _write_sheet_header(ws, "八字命盘分析报告", "格局分析", 3)
+
+    row = 4
+    row = _section_label(ws, row, 3, "一、身强身弱判断")
+    row = _write_table(ws, row, ["项目", "内容", "说明"],
+                       _wangshuai_rows(data), [12, 44, 22])
+
+    row += 1
+    row = _section_label(ws, row, 3, "二、格局判定（月令透干 + 特殊组合）")
+    row = _write_table(ws, row, ["序号", "格局断语"],
+                       _geju_rows(data), [8, 52])
+
+    row += 1
+    row = _section_label(ws, row, 3, "三、喜用神与忌神")
+    _write_table(ws, row, ["项目", "五行", "说明"],
+                 _xiyong_rows(data), [12, 18, 30])
+
+    footer_row = ws.max_row + 1
+    ws.merge_cells(start_row=footer_row, start_column=1,
+                   end_row=footer_row, end_column=3)
+    foot = ws.cell(row=footer_row, column=1,
+                   value="依据：《渊海子平》格局体系 · 子平扶抑取用法 · 由 bazi_engine 计算")
+    foot.font = _body_font(9, color="888888")
+    foot.alignment = Alignment(horizontal="center", vertical="center")
+
+
+def _build_sheet5(wb, data):
+    """Sheet 5：神煞系统 — 所有神煞列表 + 所在地支 + 吉凶标注"""
+    ws = wb.create_sheet("神煞系统")
+    _write_sheet_header(ws, "八字命盘分析报告", "神煞系统", 5)
+
+    # 神煞命中汇总
+    hz = data["神煞"]["汇总"]
+    row = 4
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+    summary = (
+        f"吉神命中 {len(hz.get('吉神命中', []))} 项（{'、'.join(hz['吉神命中']) or '无'}）· "
+        f"中性命中 {len(hz.get('中性命中', []))} 项（{'、'.join(hz['中性命中']) or '无'}）· "
+        f"凶煞命中 {len(hz.get('凶煞命中', []))} 项（{'、'.join(hz['凶煞命中']) or '无'}）"
+    )
+    c = ws.cell(row=row, column=1, value=summary)
+    c.font = _body_font(11, bold=True)
+    c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    ws.row_dimensions[row].height = 34
+
+    row += 1
+    row = _section_label(ws, row, 5, "一、神煞详表（按吉 / 中性 / 凶排序）")
+    _write_table(ws, row, ["神煞", "吉凶", "所在地支", "命中柱位", "含义"],
+                 _shensha_rows(data), [12, 8, 14, 16, 28])
+
+    footer_row = ws.max_row + 1
+    ws.merge_cells(start_row=footer_row, start_column=1,
+                   end_row=footer_row, end_column=5)
+    foot = ws.cell(row=footer_row, column=1,
+                   value="依据：《渊海子平》《三命通会》神煞章节 · 由 bazi_engine 计算")
+    foot.font = _body_font(9, color="888888")
+    foot.alignment = Alignment(horizontal="center", vertical="center")
+
+
+# ============================================================
 # 报告生成入口
 # ============================================================
 
@@ -417,10 +605,12 @@ def generate_report(sizhu_data, output_path):
     """
     生成 Excel 命盘报告
 
-    包含三个 Sheet：
+    包含五个 Sheet：
         - Sheet 1「命盘总览」：基本信息 + 四柱详表
         - Sheet 2「十神分析」：天干十神 + 地支藏干十神 + 十神统计
         - Sheet 3「五行力量」：分布统计 + 加权得分 + 强弱柱状图
+        - Sheet 4「格局分析」：身强身弱判断 + 格局判定 + 喜用神忌神
+        - Sheet 5「神煞系统」：所有神煞列表 + 所在地支 + 吉凶标注
 
     Args:
         sizhu_data: BaziCalculator.calculate_sizhu() 的返回值
@@ -509,9 +699,11 @@ def generate_report(sizhu_data, output_path):
     foot.font = _body_font(9, color="888888")
     foot.alignment = Alignment(horizontal="center", vertical="center")
 
-    # --- Sheet 2 / Sheet 3 ---
+    # --- Sheet 2 / Sheet 3 / Sheet 4 / Sheet 5 ---
     _build_sheet2(wb, data)
     _build_sheet3(wb, data)
+    _build_sheet4(wb, data)
+    _build_sheet5(wb, data)
 
     # --- 保存 ---
     output_path = os.path.abspath(output_path)
@@ -525,7 +717,7 @@ def generate_report(sizhu_data, output_path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="八字命盘 Excel 报告生成器（命盘总览 / 十神分析 / 五行力量）",
+        description="八字命盘 Excel 报告生成器（命盘总览 / 十神分析 / 五行力量 / 格局分析 / 神煞系统）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "示例：\n"

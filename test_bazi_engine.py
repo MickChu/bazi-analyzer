@@ -386,6 +386,31 @@ def test_to_dict_with_shensha():
     print("✅ test_to_dict_with_shensha: to_dict 包含完整11神煞数据")
 
 
+def test_shensha_summary_accuracy():
+    """测试：神煞汇总命中判定精确（v1.2.2 修复参考地支误判）
+
+    1990-06-15 12:00 男命：日干辛、年干庚，四支午未未午。
+    - 天乙贵人：日干查（午）命中、年干查（未）命中 → 应命中
+    - 太极贵人：日干辛查寅亥，四支均无 → 不应命中
+    - 华盖：日支未查未 → 应命中
+
+    修复前 `贵人地支` 非空列表被误判为命中，导致太极贵人错误入列。
+    """
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+
+    summary = az.get_shensha()["汇总"]
+    assert "天乙贵人" in summary["吉神命中"]
+    assert "华盖" in summary["吉神命中"]
+    assert "太极贵人" not in summary["吉神命中"], \
+        "太极贵人四支无寅亥，不应命中"
+    assert summary["总计"] == len(summary["吉神命中"]) + \
+        len(summary["中性命中"]) + len(summary["凶煞命中"])
+
+    print("✅ test_shensha_summary_accuracy: 神煞汇总判定精确（参考地支不再误判）")
+
+
 # ============================================================
 # v1.1.3 胎元 + 命宫 测试
 # ============================================================

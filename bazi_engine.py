@@ -1655,6 +1655,49 @@ def _get_wuxing_score(self):
 # 将扩展方法注入到类中
 # ============================================================
 
+def _shensha_present(name, d):
+    """
+    判断某类神煞是否命中命局
+
+    依据各类神煞的具体返回结构精确判断，避免将「查询用参考地支」
+    （如天乙/太极贵人的 `贵人地支` 列表）误判为命中证据。
+
+    Args:
+        name: 神煞名称
+        d: 该神煞的 data 查询结果字典
+
+    Returns:
+        bool: 是否命中
+    """
+    if not isinstance(d, dict):
+        return False
+
+    if name in ("天乙贵人", "太极贵人"):
+        return bool(d.get("所在柱位"))
+    if name == "文昌贵人":
+        return bool(d.get("有文昌"))
+    if name == "学堂词馆":
+        return bool((d.get("学堂") or {}).get("有学堂")
+                    or (d.get("词馆") or {}).get("有词馆"))
+    if name == "华盖":
+        return bool(d.get("有华盖"))
+    if name == "将星":
+        return bool(d.get("有将星"))
+    if name == "红鸾天喜":
+        return bool((d.get("红鸾") or {}).get("有红鸾")
+                    or (d.get("天喜") or {}).get("有天喜"))
+    if name == "桃花":
+        return d.get("桃花类型", "无") != "无"
+    if name == "驿马":
+        return bool(d.get("所在柱位"))
+    if name == "羊刃":
+        return bool(d.get("有羊刃"))
+    if name == "孤辰寡宿":
+        return bool((d.get("孤辰") or {}).get("有孤辰")
+                    or (d.get("寡宿") or {}).get("有寡宿"))
+    return False
+
+
 def _get_shensha(self):
     """
     神煞查询入口 — 返回11类神煞在四柱中的分布
@@ -1694,36 +1737,7 @@ def _get_shensha(self):
 
     for name, info in all_shensha.items():
         d = info["data"]
-        present = False
-
-        # 根据返回结构判断是否存在
-        if isinstance(d, dict):
-            for key in d:
-                if isinstance(d[key], dict):
-                    # 嵌套结构如 "学堂"/"词馆"、"红鸾"/"天喜"
-                    if d[key].get("有学堂") or d[key].get("有词馆") or \
-                       d[key].get("有华盖") or d[key].get("有将星") or \
-                       d[key].get("有羊刃") or d[key].get("有孤辰") or \
-                       d[key].get("有寡宿") or d[key].get("有红鸾") or \
-                       d[key].get("有天喜"):
-                        present = True
-                        break
-                elif isinstance(d[key], list) and len(d[key]) > 0:
-                    present = True
-                    break
-                elif isinstance(d[key], dict) and d[key].get("所在柱位"):
-                    present = True
-                    break
-                elif isinstance(d[key], dict) and d[key].get("桃花类型") and d[key]["桃花类型"] != "无":
-                    present = True
-                    break
-            # 兼容简单结构
-            if d.get("所在柱位") or d.get("有文昌") or d.get("桃花类型", "无") != "无":
-                present = True
-            if d.get("日干查") and len(d.get("日干查", [])) > 0:
-                present = True
-            if d.get("年干查") and len(d.get("年干查", [])) > 0:
-                present = True
+        present = _shensha_present(name, d)
 
         if present:
             if info["吉凶"] == "吉":
