@@ -547,6 +547,97 @@ class BaziAnalyzer:
             })
         return result
 
+    # --- 流年概览 ---
+    def analyze_liunian(self, year):
+        """
+        流年概览（单一年份）
+
+        依据：流年天干以日干论十神，流年地支以日支论冲合。
+        此为概览层：给出天干作用、地支作用、与命局四柱的冲合关系，
+        深度分析（天干地支分别作用、岁运并临、天克地冲）将在 v1.3.2 实现。
+
+        Args:
+            year: 目标流年（公历年份，如 2026）
+
+        Returns:
+            dict: 流年概览
+        """
+        year_gz = BaziCalculator().get_year_ganzhi(year)
+        gan, zhi = year_gz[0], year_gz[1]
+        gan_wx = TIANGAN_WUXING.get(gan, "?")
+        zhi_wx = DIZHI_WUXING.get(zhi, "?")
+
+        # 天干作用：以日干论十神
+        shishen = get_shishen(self.day_gan, gan) if self.day_gan else "—"
+
+        # 地支作用：与日支的冲合
+        day_zhi = self.day_zhi
+        guanxi = []
+        if day_zhi and zhi:
+            pair = (day_zhi, zhi) if day_zhi <= zhi else (zhi, day_zhi)
+            if pair in LIUHE:
+                guanxi.append("日支六合")
+            if (day_zhi, zhi) in LIUCHONG or (zhi, day_zhi) in LIUCHONG:
+                guanxi.append("日支相冲")
+
+        # 与命局四柱地支的冲合（简列命局中被冲/合的柱位）
+        hits = []
+        pillar_map = [
+            ("年支", self.data.get("year", "")[1] if self.data.get("year") else ""),
+            ("月支", self.data.get("month", "")[1] if self.data.get("month") else ""),
+            ("日支", day_zhi),
+            ("时支", self.data.get("hour", "")[1] if self.data.get("hour") else ""),
+        ]
+        for label, pz in pillar_map:
+            if not pz:
+                continue
+            pair = (pz, zhi) if pz <= zhi else (zhi, pz)
+            rel = []
+            if pair in LIUHE:
+                rel.append("合")
+            if (pz, zhi) in LIUCHONG or (zhi, pz) in LIUCHONG:
+                rel.append("冲")
+            if rel:
+                hits.append(f"{label}{pz}{'、'.join(rel)}")
+
+        return {
+            "年份": year,
+            "干支": year_gz,
+            "天干五行": gan_wx,
+            "地支五行": zhi_wx,
+            "十神": shishen,
+            "日支关系": "、".join(guanxi) if guanxi else "无冲合",
+            "命局冲合": "、".join(hits) if hits else "无",
+        }
+
+    def get_liunian_overview(self, start_year=None, count=5):
+        """
+        流年概览列表（供 Excel 报告 / JSON 输出使用）
+
+        默认从当前公历年起，给出连续 count 年的概览；
+        若排盘数据携带出生年份，则同时给出虚岁。
+
+        Args:
+            start_year: 起始年份（默认当前年）
+            count: 年份数量（默认5）
+
+        Returns:
+            list[dict]: 各年流年概览
+        """
+        if start_year is None:
+            start_year = datetime.now().year
+        birth_year = self.data.get("birth_year")
+        rows = []
+        for offset in range(count):
+            y = start_year + offset
+            item = self.analyze_liunian(y)
+            if birth_year:
+                item["虚岁"] = y - birth_year + 1
+            else:
+                item["虚岁"] = "—"
+            rows.append(item)
+        return rows
+
     # --- 命局层次断语 ---
     def get_summary_verdict(self, wangshuai):
         """生成命局层次一句话断语"""
@@ -1367,6 +1458,13 @@ def _calculate_sizhu_extended(self, year, month, day, hour, gender):
     """
     result = self._calculate_sizhu_original(year, month, day, hour, gender)
 
+    # 保留出生信息（供流年概览计算虚岁等）
+    result["birth_year"] = year
+    result["birth_month"] = month
+    result["birth_day"] = day
+    result["birth_hour"] = hour
+    result["gender"] = gender
+
     # 为每个柱添加纳音
     for key in ["year", "month", "day", "hour"]:
         result[f"{key}_nayin"] = _get_nayin(self, result[key])
@@ -1507,6 +1605,7 @@ def _to_dict(self):
         "神煞": self.get_shensha(),
         "大运": self.data.get("dayun", []),
         "大运方向": self.data.get("dayun_direction", "未知"),
+        "流年概览": self.get_liunian_overview(),
     }
 
     # 填充天干十神

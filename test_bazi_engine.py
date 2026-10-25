@@ -665,6 +665,63 @@ def test_shengong_wuxing_backward_compat():
     print("✅ test_shengong_wuxing_backward_compat: 旧数据兼容正常")
 
 
+def test_analyze_liunian():
+    """测试：analyze_liunian() 流年概览（天干十神 + 地支冲合）"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+
+    # 1990-06-15 12时 男: 日主辛金、日支未。
+    # 2026 丙午年：丙火克辛金（正官）；午与日支未六合。
+    item = az.analyze_liunian(2026)
+    assert item["年份"] == 2026
+    assert item["干支"] == "丙午"
+    assert item["十神"] == "正官", f"丙午年十神应为正官，实际 {item['十神']}"
+    assert item["日支关系"] == "日支六合"
+    assert "月支未合" in item["命局冲合"]
+    assert "日支未合" in item["命局冲合"]
+
+    # 与日支无冲合的年份
+    item2 = az.analyze_liunian(2028)
+    assert item2["干支"] == "戊申"
+    assert item2["日支关系"] == "无冲合"
+
+    print("✅ test_analyze_liunian: 流年概览（十神 + 冲合）正确")
+
+
+def test_get_liunian_overview():
+    """测试：get_liunian_overview() 流年概览列表（含虚岁）"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+    az = BaziAnalyzer(sz)
+
+    overview = az.get_liunian_overview(2026, count=3)
+    assert len(overview) == 3
+    assert overview[0]["年份"] == 2026
+    assert overview[0]["虚岁"] == 37  # 2026 - 1990 + 1
+    assert overview[2]["年份"] == 2028
+
+    # to_dict() 应包含流年概览
+    result = az.to_dict()
+    assert "流年概览" in result
+    assert len(result["流年概览"]) >= 3
+
+    print("✅ test_get_liunian_overview: 流年概览列表（含虚岁）正确")
+
+
+def test_dayun_data():
+    """测试：大运数据 8 步、每步含干支与起止年龄"""
+    calc = BaziCalculator()
+    sz = calc.calculate_sizhu(1990, 6, 15, 12, "男")
+
+    assert "dayun" in sz and len(sz["dayun"]) == 8
+    for dy in sz["dayun"]:
+        assert len(dy["ganzhi"]) == 2
+        assert dy["start_age"] < dy["end_age"]
+
+    print("✅ test_dayun_data: 大运数据 8 步完整")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("bazi_engine.py 单元测试 — v1.1.0 新增功能")
@@ -704,6 +761,10 @@ if __name__ == "__main__":
         test_get_wuxing_score,
         test_wuxing_score_weight_rules,
         test_shengong_wuxing_backward_compat,
+        # v1.2.3 大运 + 流年概览
+        test_analyze_liunian,
+        test_get_liunian_overview,
+        test_dayun_data,
     ]
 
     passed = 0

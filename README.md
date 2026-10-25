@@ -37,6 +37,12 @@ python bazi_analyzer_offline.py
 
 按提示输入性别、出生日期（公历/农历）、出生时间，即可获得完整命局分析报告。
 
+生成 Excel 命盘报告（7 个 Sheet：命盘总览 / 十神分析 / 五行力量 / 格局分析 / 神煞系统 / 胎元命宫身宫 / 大运流年，含图表）：
+
+`bash
+python excel_report.py --year 1990 --month 6 --day 15 --hour 12 --gender 男 --output report.xlsx
+`
+
 ## 设计理念
 
 - **直断为本**：重结构、重五行流通，轻神煞

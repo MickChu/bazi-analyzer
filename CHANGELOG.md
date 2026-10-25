@@ -4,6 +4,37 @@
 
 ---
 
+## v1.2.3 — Excel Sheet 6-7：胎元命宫身宫 + 大运流年；图表可视化 (2026-10-26)
+
+### 新增
+
+- **`excel_report.py`** 新增两个 Sheet，报告由 5 个 Sheet 扩展为 7 个：
+  - **Sheet 6「胎元命宫身宫」**：
+    - 胎元 / 命宫 / 身宫三柱详表（干支、天干、地支、藏干、纳音、十神）
+    - 五行力量雷达图（以加权得分占比为数据源，openpyxl RadarChart）
+  - **Sheet 7「大运流年」**：
+    - 大运排盘表：8 步大运（大运干支、年龄区间、天干十神、地支本气、五行）
+    - 流年概览表：近五年流年（年份、虚岁、流年干支、十神、五行、日支关系、命局冲合）
+    - 十神数量条形图（openpyxl BarChart）
+- 新增数据构建函数：`_fusanzhu_rows`、`_dayun_rows`、`_liunian_rows`；新增 `_build_sheet6`、`_build_sheet7`
+
+- **`bazi_engine.py`** 新增流年概览能力：
+  - `BaziAnalyzer.analyze_liunian(year)` — 流年概览：流年干支、天干十神（以日干论）、地支五行、与日支的六合/六冲、与命局四柱地支的冲合关系
+  - `BaziAnalyzer.get_liunian_overview(start_year, count)` — 连续多年流年概览列表（含虚岁）
+  - `to_dict()` 新增「流年概览」字段；扩展排盘新增 `birth_year` 等出生信息字段
+  - 说明：此为概览层；深度流年分析（天干地支分别作用、岁运并临、天克地冲）在 v1.3.2 实现
+
+### 测试
+
+- 新增 `test_analyze_liunian`、`test_get_liunian_overview`、`test_dayun_data`，测试总计 33 项全部通过。
+
+### 依据
+
+- 胎元/命宫/身宫：《渊海子平》《三命通会》起法（复用 v1.1.3 / v1.1.4 引擎计算结果）
+- 大运：《渊海子平》阳年男顺阴年女逆排法；流年天干以日干论十神、地支以日支论冲合
+
+---
+
 ## v1.2.2 — Excel Sheet 4-5：格局分析 + 神煞系统 (2026-10-12)
 
 ### 新增

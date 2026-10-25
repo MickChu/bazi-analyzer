@@ -34,14 +34,14 @@ try:
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
-    from openpyxl.chart import BarChart, Reference
+    from openpyxl.chart import BarChart, RadarChart, Reference
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
         "缺少 openpyxl 依赖。请先安装：pip install openpyxl"
     ) from exc
 
 from bazi_engine import (
-    BaziCalculator, BaziAnalyzer,
+    BaziCalculator, BaziAnalyzer, get_shishen,
     DIZHI_CANGGAN, DIZHI_WUXING, TIANGAN_WUXING,
 )
 
@@ -598,6 +598,154 @@ def _build_sheet5(wb, data):
 
 
 # ============================================================
+# Sheet 6 / Sheet 7 数据构建
+# ============================================================
+
+def _fusanzhu_rows(data):
+    """胎元/命宫/身宫表数据：[(柱位, 干支, 天干, 地支, 藏干, 纳音, 十神), ...]"""
+    mp = data["命盘总览"]
+    rows = []
+    for label in ["胎元", "命宫", "身宫"]:
+        pillar = mp.get(label, {})
+        if not pillar:
+            continue
+        gan = pillar.get("天干", "")
+        zhi = pillar.get("地支", "")
+        canggan = "、".join(pillar.get("藏干", [])) if pillar.get("藏干") else "—"
+        nayin = pillar.get("纳音", {}).get("nayin", "—") if isinstance(pillar.get("纳音"), dict) else "—"
+        shishen = pillar.get("十神", "—") or "—"
+        rows.append([label, f"{gan}{zhi}", gan, zhi, canggan, nayin, shishen])
+    return rows
+
+
+def _dayun_rows(data):
+    """
+    大运表数据：[(大运干支, 年龄区间, 天干十神, 地支本气五行, 天干五行+地支五行), ...]
+
+    依据：大运天干以日干论十神；地支以本气五行标注（流年作用概览层）。
+    """
+    mp = data["命盘总览"]
+    day_gan = mp["日柱"].get("天干", "")
+    rows = []
+    for dy in data.get("大运", []):
+        gz = dy.get("ganzhi", "")
+        if not gz:
+            continue
+        gan, zhi = gz[0], gz[1]
+        gan_ss = get_shishen(day_gan, gan) if day_gan and gan else "—"
+        zhi_wx = DIZHI_WUXING.get(zhi, "?")
+        gan_wx = TIANGAN_WUXING.get(gan, "?")
+        rows.append([
+            gz,
+            f"{dy.get('start_age', '?')}-{dy.get('end_age', '?')}岁",
+            gan_ss,
+            zhi_wx,
+            f"{gan_wx} + {zhi_wx}",
+        ])
+    return rows
+
+
+def _liunian_rows(data):
+    """流年概览表数据：[(年份, 虚岁, 流年干支, 十神, 五行, 日支关系, 命局冲合), ...]"""
+    rows = []
+    for item in data.get("流年概览", []):
+        rows.append([
+            item.get("年份", "—"),
+            item.get("虚岁", "—"),
+            item.get("干支", "—"),
+            item.get("十神", "—"),
+            f"{item.get('天干五行', '?')} + {item.get('地支五行', '?')}",
+            item.get("日支关系", "—"),
+            item.get("命局冲合", "—"),
+        ])
+    return rows
+
+
+def _build_sheet6(wb, data):
+    """Sheet 6：胎元命宫身宫 — 三柱天干地支纳音十神 + 五行雷达图"""
+    ws = wb.create_sheet("胎元命宫身宫")
+    _write_sheet_header(ws, "八字命盘分析报告", "胎元 · 命宫 · 身宫", 7)
+
+    row = 4
+    row = _section_label(ws, row, 7, "一、胎元 / 命宫 / 身宫 详表")
+    _write_table(ws, row, ["柱位", "干支", "天干", "地支", "藏干", "纳音", "十神"],
+                 _fusanzhu_rows(data), [10, 10, 10, 10, 18, 14, 12])
+
+    # 二、五行力量雷达图（以加权得分占比为数据源）
+    row = ws.max_row + 2
+    row = _section_label(ws, row, 7, "二、五行力量雷达图（加权得分占比）")
+
+    chart = RadarChart()
+    chart.type = "standard"
+    chart.title = "五行力量占比"
+    chart.legend = None
+
+    score_rows = _wuxing_score_rows(data)
+    # 雷达图数据放在隐藏辅助区（第 9 列起），避免污染主体表格
+    aux_col = 9
+    aux_header_row = row
+    ws.cell(row=aux_header_row, column=aux_col - 1, value="五行")
+    ws.cell(row=aux_header_row, column=aux_col, value="占比%")
+    for i, (wx, score, ratio) in enumerate(score_rows):
+        ws.cell(row=aux_header_row + 1 + i, column=aux_col - 1, value=wx)
+        ws.cell(row=aux_header_row + 1 + i, column=aux_col, value=float(ratio[:-1]))
+
+    data_ref = Reference(ws, min_col=aux_col, max_col=aux_col,
+                         min_row=aux_header_row, max_row=aux_header_row + len(score_rows))
+    cats_ref = Reference(ws, min_col=aux_col - 1, max_col=aux_col - 1,
+                         min_row=aux_header_row + 1, max_row=aux_header_row + len(score_rows))
+    chart.add_data(data_ref, titles_from_data=True)
+    chart.set_categories(cats_ref)
+    ws.add_chart(chart, f"A{row}")
+
+
+def _build_sheet7(wb, data):
+    """Sheet 7：大运流年 — 10步大运表 + 流年概览 + 十神条形图"""
+    ws = wb.create_sheet("大运流年")
+    _write_sheet_header(ws, "八字命盘分析报告", "大运 · 流年", 7)
+
+    row = 4
+    row = _section_label(ws, row, 7, "一、大运排盘")
+    _write_table(ws, row, ["大运", "年龄", "天干十神", "地支本气", "五行"],
+                 _dayun_rows(data), [12, 14, 12, 12, 16])
+
+    row = ws.max_row + 2
+    row = _section_label(ws, row, 7, "二、流年概览（近五年）")
+    _write_table(ws, row, ["年份", "虚岁", "流年干支", "十神", "五行", "日支关系", "命局冲合"],
+                 _liunian_rows(data), [10, 8, 10, 10, 14, 12, 22])
+
+    # 三、十神条形图
+    row = ws.max_row + 2
+    row = _section_label(ws, row, 7, "三、十神统计条形图")
+
+    chart = BarChart()
+    chart.type = "bar"
+    chart.style = 10
+    chart.title = "十神数量统计"
+    chart.x_axis.title = "数量"
+    chart.y_axis.title = "十神"
+    chart.legend = None
+
+    stat_rows = _shishen_stat_rows(data)
+    # 数据放隐藏辅助区（第 9 列起）
+    aux_col = 9
+    aux_header_row = row
+    ws.cell(row=aux_header_row, column=aux_col - 1, value="十神")
+    ws.cell(row=aux_header_row, column=aux_col, value="数量")
+    for i, (name, count) in enumerate(stat_rows):
+        ws.cell(row=aux_header_row + 1 + i, column=aux_col - 1, value=name)
+        ws.cell(row=aux_header_row + 1 + i, column=aux_col, value=count)
+
+    data_ref = Reference(ws, min_col=aux_col, max_col=aux_col,
+                         min_row=aux_header_row, max_row=aux_header_row + len(stat_rows))
+    cats_ref = Reference(ws, min_col=aux_col - 1, max_col=aux_col - 1,
+                         min_row=aux_header_row + 1, max_row=aux_header_row + len(stat_rows))
+    chart.add_data(data_ref, titles_from_data=True)
+    chart.set_categories(cats_ref)
+    ws.add_chart(chart, f"A{row}")
+
+
+# ============================================================
 # 报告生成入口
 # ============================================================
 
@@ -605,12 +753,14 @@ def generate_report(sizhu_data, output_path):
     """
     生成 Excel 命盘报告
 
-    包含五个 Sheet：
+    包含七个 Sheet：
         - Sheet 1「命盘总览」：基本信息 + 四柱详表
         - Sheet 2「十神分析」：天干十神 + 地支藏干十神 + 十神统计
         - Sheet 3「五行力量」：分布统计 + 加权得分 + 强弱柱状图
         - Sheet 4「格局分析」：身强身弱判断 + 格局判定 + 喜用神忌神
         - Sheet 5「神煞系统」：所有神煞列表 + 所在地支 + 吉凶标注
+        - Sheet 6「胎元命宫身宫」：三柱天干地支纳音十神 + 五行雷达图
+        - Sheet 7「大运流年」：10步大运表 + 流年概览 + 十神条形图
 
     Args:
         sizhu_data: BaziCalculator.calculate_sizhu() 的返回值
@@ -699,11 +849,13 @@ def generate_report(sizhu_data, output_path):
     foot.font = _body_font(9, color="888888")
     foot.alignment = Alignment(horizontal="center", vertical="center")
 
-    # --- Sheet 2 / Sheet 3 / Sheet 4 / Sheet 5 ---
+    # --- Sheet 2 / Sheet 3 / Sheet 4 / Sheet 5 / Sheet 6 / Sheet 7 ---
     _build_sheet2(wb, data)
     _build_sheet3(wb, data)
     _build_sheet4(wb, data)
     _build_sheet5(wb, data)
+    _build_sheet6(wb, data)
+    _build_sheet7(wb, data)
 
     # --- 保存 ---
     output_path = os.path.abspath(output_path)
@@ -717,7 +869,7 @@ def generate_report(sizhu_data, output_path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="八字命盘 Excel 报告生成器（命盘总览 / 十神分析 / 五行力量 / 格局分析 / 神煞系统）",
+        description="八字命盘 Excel 报告生成器（命盘总览 / 十神分析 / 五行力量 / 格局分析 / 神煞系统 / 胎元命宫身宫 / 大运流年）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "示例：\n"
