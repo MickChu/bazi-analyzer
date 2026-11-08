@@ -4,6 +4,45 @@
 
 ---
 
+## v1.3.0 — 节气与大运精确化 (2026-11-09)
+
+### 新增
+
+- **`bazi_engine.py`** 引入 `ephem` 库精确计算节气（误差 < 1 小时；`ephem` 缺失时回退到低精度天文近似，误差仍 < 1 小时）：
+  - `BaziCalculator.get_jieqi_datetime(year, jieqi_name)` — 返回精确节气时刻（北京时间 naive datetime）
+  - 天文辅助函数：`_datetime_to_jd` / `_jd_to_datetime`（儒略日与北京时间互转）、`_sun_ecliptic_longitude`（太阳视黄经，含岁差修正）、`_signed_lon_delta`（黄经带符号差定位）
+  - 24 节气黄经表 `JIEQI_DEG`、十二「节」月建对照 `JIE_YUEJIAN`、近似日期表 `JIEQI_APPROX`
+- **精确年柱/月建分界：**
+  - `BaziCalculator.determine_year_ganzhi(year, month, day, hour)` — 以立春精确时刻为年柱分界
+  - `BaziCalculator.determine_yuejian_precise(year, month, day, hour)` — 以十二「节」精确时刻为月建分界
+- **`BaziCalculator.calculate_qiyun_age(year, month, day, hour, gender)`** — 按「距节天数÷3」计算起运年龄，返回岁/月/虚岁/距节天数/节气/方向；顺逆排按阳年男/阴年女规则
+- **大运排盘精度提升：**
+  - `calculate_dayun()` 支持传入精确起运虚岁（`qiyun_virtual_age`），替代固定 3+10n 近似
+  - `calculate_sizhu()` 改用精确年柱/月建，新增 `qiyun` 字段
+  - `to_dict()` 新增「起运」字段
+
+### 修复
+
+- **`bazi_engine.py`** — 修复固定日期近似的月建整体偏移：原 `determine_yuejian()` 在节令边界前后月建错位一个地支（如 6 月 15 日被误判为未月，实际应为午月）。精确化后 1990-06-15 月柱由「癸未」修正为「壬午」，胎元/命宫/身宫及五行得分随之校正。
+- **`bazi_engine.py`** — 修复逆排大运地支取模错误：`calculate_dayun()` 逆排地支 `% 10` 应为 `% 12`。
+- **`bazi_engine.py`** — 修复 `get_month_ganzhi()` 月干偏移：子/丑月（寅月之前）的偏移量未按 12 地支回环，导致月干错位。
+
+### 测试
+
+- 新增 `test_get_jieqi_datetime`、`test_determine_year_ganzhi`、`test_determine_yuejian_precise`、`test_calculate_qiyun_age`、`test_dayun_uses_precise_qiyun`、`test_dayun_dizhi_mod_fix` 共 6 项；同步校正受月建修正影响的胎元/命宫/身宫/五行得分/流年冲合断言。测试总计 39 项全部通过。
+
+### 已知问题（待后续版本）
+
+- 十神「印/食伤」阴阳判定与子平标准相反（ROADMAP 命理改进清单 #9），本次仅记录未改动，避免影响既有 Excel 输出与既有断言。
+
+### 依据
+
+- 节气（定气法）：太阳视黄经每 15° 为一节气，立春 315° 起算；月建以十二「节」为界、年柱以立春为界
+- 起运：《渊海子平》阳年男顺阴年女逆，距节天数÷3 折算（三天一岁、一天四个月）
+- 天文：ephem 星历 + 岁差修正（general precession in longitude，J2000.0 → 当日平春分点）
+
+---
+
 ## v1.2.3 — Excel Sheet 6-7：胎元命宫身宫 + 大运流年；图表可视化 (2026-10-26)
 
 ### 新增

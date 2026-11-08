@@ -8,7 +8,15 @@
     from bazi_engine import BaziCalculator, BaziAnalyzer, get_shishen
 """
 
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
+
+try:
+    import ephem
+    _EPHEM_AVAILABLE = True
+except ImportError:  # 可选依赖，缺失时回退到低精度天文近似
+    ephem = None
+    _EPHEM_AVAILABLE = False
 
 # ============================================================
 # 基础数据定义
@@ -67,6 +75,41 @@ SANHUI = {
     "火": ["巳", "午", "未"], "金": ["申", "酉", "戌"]
 }
 
+# ============================================================
+# 二十四节气（太阳视黄经每15°为一个节气，春分0°起）
+# ============================================================
+
+# 节气名 → 太阳黄经（度）
+JIEQI_DEG = {
+    "春分": 0, "清明": 15, "谷雨": 30, "立夏": 45,
+    "小满": 60, "芒种": 75, "夏至": 90, "小暑": 105,
+    "大暑": 120, "立秋": 135, "处暑": 150, "白露": 165,
+    "秋分": 180, "寒露": 195, "霜降": 210, "立冬": 225,
+    "小雪": 240, "大雪": 255, "冬至": 270, "小寒": 285,
+    "大寒": 300, "立春": 315, "雨水": 330, "惊蛰": 345,
+}
+
+# 十二「节」（月建分界点）→ 对应月建地支（立春建寅、惊蛰建卯……小寒建丑）
+JIE_YUEJIAN = [
+    ("立春", "寅"), ("惊蛰", "卯"), ("清明", "辰"), ("立夏", "巳"),
+    ("芒种", "午"), ("小暑", "未"), ("立秋", "申"), ("白露", "酉"),
+    ("寒露", "戌"), ("立冬", "亥"), ("大雪", "子"), ("小寒", "丑"),
+]
+
+# 各节气大致公历日期（月, 日），仅用于缩小搜索窗口
+JIEQI_APPROX = {
+    "春分": (3, 20), "清明": (4, 5), "谷雨": (4, 20), "立夏": (5, 6),
+    "小满": (5, 21), "芒种": (6, 6), "夏至": (6, 21), "小暑": (7, 7),
+    "大暑": (7, 23), "立秋": (8, 8), "处暑": (8, 23), "白露": (9, 8),
+    "秋分": (9, 23), "寒露": (10, 8), "霜降": (10, 23), "立冬": (11, 7),
+    "小雪": (11, 22), "大雪": (12, 7), "冬至": (12, 22), "小寒": (1, 6),
+    "大寒": (1, 20), "立春": (2, 4), "雨水": (2, 19), "惊蛰": (3, 6),
+}
+
+# 北京时间与 UTC 的时差（小时）
+_UTC_OFFSET = 8
+
+
 # 五行生克关系
 SHENG_WO = {"水": "金", "木": "水", "火": "木", "土": "火", "金": "土"}   # 生我者
 WO_SHENG = {"金": "水", "水": "木", "木": "火", "火": "土", "土": "金"}   # 我生者
@@ -108,6 +151,80 @@ def get_shishen(day_gan, target_gan):
 
 
 # ============================================================
+# 天文辅助函数（节气精确计算）
+# ============================================================
+
+def _datetime_to_jd(dt):
+    """naive datetime（北京时间）→ 儒略日(UT)"""
+    dt_utc = dt - timedelta(hours=_UTC_OFFSET)
+    y, m = dt_utc.year, dt_utc.month
+    d = (dt_utc.day + dt_utc.hour / 24.0 + dt_utc.minute / 1440.0
+         + dt_utc.second / 86400.0 + dt_utc.microsecond / 86400000000.0)
+    if m <= 2:
+        y -= 1
+        m += 12
+    a = y // 100
+    b = 2 - a + a // 4
+    return int(365.25 * (y + 4716)) + int(30.6001 * (m + 1)) + d + b - 1524.5
+
+
+def _jd_to_datetime(jd):
+    """儒略日(UT) → naive datetime（北京时间）"""
+    z = int(jd + 0.5)
+    f = jd + 0.5 - z
+    if z < 2299161:
+        a = z
+    else:
+        alpha = int((z - 1867216.25) / 36524.25)
+        a = z + 1 + alpha - int(alpha / 4)
+    b = a + 1524
+    c = int((b - 122.1) / 365.25)
+    d = int(365.25 * c)
+    e = int((b - d) / 30.6001)
+    day = b - d - int(30.6001 * e) + f
+    month = e - 1 if e < 14 else e - 13
+    year = c - 4716 if month > 2 else c - 4715
+    day_int = int(day)
+    frac = day - day_int
+    total_seconds = int(round(frac * 86400))
+    if total_seconds >= 86400:
+        total_seconds -= 86400
+        day_int += 1
+    hour = total_seconds // 3600
+    minute = (total_seconds % 3600) // 60
+    second = total_seconds % 60
+    utc_dt = datetime(year, month, day_int, hour, minute, second)
+    return utc_dt + timedelta(hours=_UTC_OFFSET)
+
+
+def _sun_ecliptic_longitude(jd):
+    """太阳视黄经（度，以当日平春分点为基准），jd 为儒略日(UT)"""
+    t = (jd - 2451545.0) / 36525.0
+    if _EPHEM_AVAILABLE:
+        utc_dt = _jd_to_datetime(jd) - timedelta(hours=_UTC_OFFSET)
+        sun = ephem.Sun()
+        sun.compute(ephem.Date(utc_dt))
+        # ephem 的黄经以 J2000.0 平春分点为基准，节气须以当日平春分点量起，
+        # 需补回岁差（general precession in longitude），否则约产生 0.33°/百年的系统性偏差（≈8 小时）
+        lon_j2000 = math.degrees(float(ephem.Ecliptic(sun).lon))
+        precession_deg = (5029.0966 * t + 1.11113 * t * t) / 3600.0
+        return (lon_j2000 + precession_deg) % 360.0
+    # 低精度天文近似（Meeus 简化），时间误差通常 < 1 小时
+    l0 = 280.46646 + 36000.76983 * t + 0.0003032 * t * t
+    m = 357.52911 + 35999.05029 * t - 0.0001537 * t * t
+    c = ((1.914602 - 0.004817 * t - 0.000014 * t * t) * math.sin(math.radians(m))
+         + (0.019993 - 0.000101 * t) * math.sin(math.radians(2 * m))
+         + 0.000289 * math.sin(math.radians(3 * m)))
+    return (l0 + c) % 360.0
+
+
+def _signed_lon_delta(jd, target_deg):
+    """太阳黄经与目标黄经的带符号差（度），用于定位节气"""
+    lon = _sun_ecliptic_longitude(jd)
+    return ((lon - target_deg + 180.0) % 360.0) - 180.0
+
+
+# ============================================================
 # 四柱排盘计算器
 # ============================================================
 
@@ -115,6 +232,9 @@ class BaziCalculator:
     """八字排盘计算器，支持从公历日期计算四柱、大运"""
 
     BASE_YEAR = 1984  # 甲子年
+
+    def __init__(self):
+        self._jieqi_cache = {}
 
     # --- 年柱 ---
     def get_year_ganzhi(self, year):
@@ -138,7 +258,8 @@ class BaziCalculator:
         }
         start_idx = TIANGAN.index(_WUHU[year_gan])
         yuejian_idx = DIZHI.index(yuejian)
-        gan_idx = (start_idx + (yuejian_idx - 2)) % 10
+        # 注意：月干偏移须先对 12 取模（子、丑月在寅之前，否则会错位）
+        gan_idx = (start_idx + ((yuejian_idx - 2) % 12)) % 10
         return TIANGAN[gan_idx] + yuejian
 
     # --- 日柱 ---
@@ -202,6 +323,123 @@ class BaziCalculator:
         else:
             return _YUEJIAN_BEFORE[month]
 
+    # --- 精确节气 ---
+    def get_jieqi_datetime(self, year, jieqi_name):
+        """
+        计算指定公历年份内某节气的精确时刻（北京时间）
+
+        依据：太阳视黄经每 15° 为一个节气；用 ephem 精确求解（误差秒级），
+        无 ephem 时回退到低精度天文近似（误差仍 < 1 小时）。
+
+        Args:
+            year: 公历年份
+            jieqi_name: 节气名（如 '立春'、'冬至'）
+
+        Returns:
+            datetime: 节气精确时刻（naive，北京时间）
+        """
+        if jieqi_name not in JIEQI_DEG:
+            raise ValueError(f"未知节气：{jieqi_name}")
+        key = (year, jieqi_name)
+        if key in self._jieqi_cache:
+            return self._jieqi_cache[key]
+
+        target_deg = JIEQI_DEG[jieqi_name]
+        approx_m, approx_d = JIEQI_APPROX[jieqi_name]
+        # 从近似日期前 3 天开始，半天步长扫描定位跨越点，再二分求精
+        start_dt = datetime(year, approx_m, approx_d, 12, 0, 0) - timedelta(days=3)
+        t0 = _datetime_to_jd(start_dt)
+        d0 = _signed_lon_delta(t0, target_deg)
+        t1 = t0 + 0.5
+        while True:
+            d1 = _signed_lon_delta(t1, target_deg)
+            if d0 < 0 <= d1:
+                break
+            t0, d0 = t1, d1
+            t1 += 0.5
+        for _ in range(40):
+            mid = (t0 + t1) / 2.0
+            if _signed_lon_delta(mid, target_deg) < 0:
+                t0 = mid
+            else:
+                t1 = mid
+        result = _jd_to_datetime((t0 + t1) / 2.0)
+        self._jieqi_cache[key] = result
+        return result
+
+    # --- 精确年柱（立春分界） ---
+    def determine_year_ganzhi(self, year, month, day, hour):
+        """
+        按立春精确时刻确定年柱干支
+
+        依据：年柱以立春为界，立春前出生属上一年干支，立春后属当年干支。
+        """
+        birth_dt = datetime(year, month, day, hour)
+        lichun = self.get_jieqi_datetime(year, "立春")
+        effective_year = year if birth_dt >= lichun else year - 1
+        return self.get_year_ganzhi(effective_year)
+
+    # --- 精确月建（节令分界） ---
+    def determine_yuejian_precise(self, year, month, day, hour):
+        """
+        按节令精确时刻确定月建地支
+
+        依据：月建以十二「节」为界；收集出生年及上一年共 24 个节令时刻，
+        取最近一个不晚于出生时刻的「节」所对应的月建。
+        """
+        birth_dt = datetime(year, month, day, hour)
+        candidates = []
+        for jie_name, yuejian in JIE_YUEJIAN:
+            candidates.append((self.get_jieqi_datetime(year - 1, jie_name), yuejian))
+            candidates.append((self.get_jieqi_datetime(year, jie_name), yuejian))
+        passed = [item for item in candidates if item[0] <= birth_dt]
+        return max(passed, key=lambda x: x[0])[1]
+
+    # --- 起运年龄 ---
+    def calculate_qiyun_age(self, year, month, day, hour, gender):
+        """
+        根据距节天数÷3 计算起运年龄（精确到几岁几个月）
+
+        规则：阳年男/阴年女顺排，顺数至下一个节；阴年男/阳年女逆排，
+        逆数至上一个节。三天折一年，一天折四个月。
+
+        Returns:
+            dict: {岁, 月, 虚岁, 距节天数, 节气, 方向}
+        """
+        year_gan = self.determine_year_ganzhi(year, month, day, hour)[0]
+        year_yang = TIANGAN_YINYANG[year_gan] == "阳"
+        is_male = gender == "男"
+        forward = (year_yang and is_male) or (not year_yang and not is_male)
+
+        birth_dt = datetime(year, month, day, hour)
+        if forward:
+            jie_times = []
+            for jie_name, _ in JIE_YUEJIAN:
+                jie_times.append((self.get_jieqi_datetime(year, jie_name), jie_name))
+                jie_times.append((self.get_jieqi_datetime(year + 1, jie_name), jie_name))
+            target = min([t for t in jie_times if t[0] > birth_dt], key=lambda x: x[0])
+            days = (target[0] - birth_dt).total_seconds() / 86400.0
+        else:
+            jie_times = []
+            for jie_name, _ in JIE_YUEJIAN:
+                jie_times.append((self.get_jieqi_datetime(year - 1, jie_name), jie_name))
+                jie_times.append((self.get_jieqi_datetime(year, jie_name), jie_name))
+            target = max([t for t in jie_times if t[0] <= birth_dt], key=lambda x: x[0])
+            days = (birth_dt - target[0]).total_seconds() / 86400.0
+
+        qiyun_years = int(days / 3)          # 三天折一年
+        remaining_days = days - qiyun_years * 3
+        qiyun_months = int(remaining_days * 4)  # 一天折四个月
+
+        return {
+            "岁": qiyun_years,
+            "月": qiyun_months,
+            "虚岁": qiyun_years + 1,
+            "距节天数": round(days, 2),
+            "节气": target[1],
+            "方向": "顺排" if forward else "逆排",
+        }
+
     # --- 胎元 ---
     def get_taiyuan(self, month_ganzhi):
         """
@@ -261,7 +499,8 @@ class BaziCalculator:
         return DIZHI[(month_idx + hour_idx) % 12]
 
     # --- 大运 ---
-    def calculate_dayun(self, year_gan, month_gan, month_zhi, gender, birth_year, count=8):
+    def calculate_dayun(self, year_gan, month_gan, month_zhi, gender, birth_year,
+                        count=8, qiyun_virtual_age=None):
         """
         计算大运
 
@@ -272,6 +511,8 @@ class BaziCalculator:
             gender: '男' 或 '女'
             birth_year: 出生年份（用于计算起运年龄）
             count: 大运步数，默认8步
+            qiyun_virtual_age: 起运虚岁（由 calculate_qiyun_age 精确计算）
+                               缺省时回退到 3+10n 的近似值
         """
         year_yang = TIANGAN_YINYANG[year_gan] == "阳"
         is_male = gender == "男"
@@ -288,9 +529,12 @@ class BaziCalculator:
                 zi = (z_idx + step) % 12
             else:
                 gi = (g_idx - step) % 10
-                zi = (z_idx - step) % 10
+                zi = (z_idx - step) % 12
 
-            start_age = 3 + i * 10  # 简化：实际应按距月令节气天数计算
+            if qiyun_virtual_age is not None:
+                start_age = qiyun_virtual_age + i * 10
+            else:
+                start_age = 3 + i * 10  # 简化近似：实际应按距节天数计算
             dayun.append({
                 "ganzhi": TIANGAN[gi] + DIZHI[zi],
                 "start_age": start_age,
@@ -314,14 +558,16 @@ class BaziCalculator:
         Returns:
             dict: 完整命盘数据
         """
-        year_gz = self.get_year_ganzhi(year)
-        yuejian = self.determine_yuejian(year, month, day)
+        year_gz = self.determine_year_ganzhi(year, month, day, hour)
+        yuejian = self.determine_yuejian_precise(year, month, day, hour)
         month_gz = self.get_month_ganzhi(year_gz[0], yuejian)
         day_gz = self.get_day_ganzhi(year, month, day)
         hour_gz = self.get_hour_ganzhi(day_gz, hour)
 
+        qiyun = self.calculate_qiyun_age(year, month, day, hour, gender)
         dayun, forward = self.calculate_dayun(
-            year_gz[0], month_gz[0], month_gz[1], gender, year
+            year_gz[0], month_gz[0], month_gz[1], gender, year,
+            qiyun_virtual_age=qiyun["虚岁"]
         )
 
         return {
@@ -332,6 +578,7 @@ class BaziCalculator:
             "yuejian": yuejian,
             "dayun": dayun,
             "dayun_direction": "顺排" if forward else "逆排",
+            "qiyun": qiyun,
         }
 
 
@@ -1605,6 +1852,7 @@ def _to_dict(self):
         "神煞": self.get_shensha(),
         "大运": self.data.get("dayun", []),
         "大运方向": self.data.get("dayun_direction", "未知"),
+        "起运": self.data.get("qiyun", {}),
         "流年概览": self.get_liunian_overview(),
     }
 
